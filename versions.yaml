@@ -1,0 +1,9 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+module-sets:
+  oidc-gateway:
+    version: v0.1.0
+    modules:
+      - github.com/agntcy/oidc-gateway/authzserver
+      - github.com/agntcy/oidc-gateway/cmd/oidc-gateway
