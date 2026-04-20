@@ -1,0 +1,243 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3"
+
+env:
+  GOWORK: off
+
+includes:
+  vars:
+    taskfile: Taskfile.vars.yml
+    flatten: true
+    excludes: [default]
+
+  deps:
+    taskfile: Taskfile.deps.yml
+    dir: "{{.BIN_DIR}}"
+    flatten: true
+    excludes: [default]
+
+  helm:
+    taskfile: install/Taskfile.yml
+    flatten: true
+    excludes: [default]
+
+tasks:
+  ##
+  ## General
+  ##
+  default:
+    cmds:
+      - task -l
+
+  check:
+    desc: Run all code checks (lint + license)
+    cmds:
+      - task: lint
+      - task: license
+
+  ##
+  ## Build
+  ##
+  build:
+    desc: Build the oidc-gateway image
+    vars:
+      GOARCH: "{{ .GOARCH | default ARCH }}"
+    cmds:
+      - |
+        if [ "${CI}" != "true" ]; then
+          {{.BAKE_ENV}} docker buildx bake {{.IMAGE_BAKE_OPTS}} --set *.platform=linux/{{.GOARCH}}
+        else
+          image=$({{.BAKE_ENV}} docker buildx bake --print | jq -r '.target | to_entries[0].value.tags[0]')
+          if ! docker image inspect "$image" > /dev/null 2>&1; then
+            {{.BAKE_ENV}} docker buildx bake {{.IMAGE_BAKE_OPTS}} --set *.platform=linux/{{.GOARCH}}
+          else
+            echo "Image already exists locally. Skipping build."
+          fi
+        fi
+
+  push:
+    desc: Build and push the oidc-gateway image to registry
+    prompt:
+      - Are you sure you want to push the image to remote registry?
+    cmds:
+      - "{{.BAKE_ENV}} docker buildx bake {{.IMAGE_BAKE_OPTS}} --set=*.output=type=registry"
+
+  ##
+  ## Test
+  ##
+  test:unit:
+    desc: Run unit tests
+    aliases: [test]
+    env:
+      GOWORK: off
+    vars:
+      EXTRA_ARGS: '{{ .EXTRA_ARGS | default "" }}'
+    cmds:
+      - for: { var: GO_MODULES_UNIT_TEST }
+        cmd: |
+          echo "Running tests in {{.ITEM}}"
+          go -C {{.ITEM}} test ./... {{.EXTRA_ARGS}}
+
+  test:unit:coverage:
+    desc: Run unit tests with coverage
+    cmds:
+      - cmd: mkdir -p {{.COVERAGE_DIR}}/unit
+
+      - for: { var: GO_MODULES_UNIT_TEST }
+        cmd: |
+          path={{.ITEM}}
+          mkdir -p {{.COVERAGE_DIR}}/unit/${path%/*}
+          echo "Running coverage tests in {{.ITEM}}"
+          go test -C {{.ITEM}} -covermode=atomic -coverprofile="{{.COVERAGE_DIR}}/unit/{{.ITEM}}.out" ./... > /dev/null
+
+  ##
+  ## Linters
+  ##
+  pre-commit:golangci-lint:
+    desc: Run golangci-lint pre-commit hook
+    vars:
+      GO_MODULES:
+        sh: |
+          go_files="{{.CLI_ARGS}}"
+          go_modules='{{.GO_MODULES | splitLines | join " " }}'
+
+          get_go_module() {
+            local go_file="$1"
+            result=""
+            length=0
+            for go_module in $go_modules; do
+              if [[ "./$go_file" == "$go_module"* ]]; then
+                if (( length < ${#go_module} )); then
+                  result="$go_module"
+                  length=${#go_module}
+                fi
+              fi
+            done
+            echo "$result"
+          }
+
+          result=()
+          for go_file in $go_files; do
+            go_module=$(get_go_module "$go_file")
+            [ -n "$go_module" ] && result+=("$go_module")
+          done
+          result=($(printf "%s\n" "${result[@]}" | sort -u))
+          echo "${result[@]}"
+    cmds:
+      - task: lint:go
+        vars:
+          GO_MODULES: "{{ .GO_MODULES }}"
+          FIX: "true"
+          REV: "HEAD"
+
+  lint:go:
+    desc: Run Go linters
+    vars:
+      GO_MODULES: "{{ .GO_MODULES }}"
+      FIX: '{{ .FIX | default "" }}'
+      REV: '{{ .REV | default "" }}'
+    deps:
+      - task: deps:golangci-lint
+    cmds:
+      - task: lint:go:modules
+        vars:
+          GO_MODULES: "{{ .GO_MODULES }}"
+          FIX: "{{ .FIX }}"
+          REV: "{{ .REV }}"
+
+  lint:go:modules:
+    internal: true
+    cmd:
+      for: { var: GO_MODULES }
+      task: lint:go:module
+      vars:
+        GO_MODULE: "{{.ITEM}}"
+        FIX: "{{.FIX}}"
+        REV: "{{.REV}}"
+
+  lint:go:module:
+    internal: true
+    vars:
+      GO_MODULE: '{{ .GO_MODULE | default "." }}'
+      FIX: '{{ .FIX | default "" }}'
+      REV: '{{ .REV | default "" }}'
+    dir: "{{ .GO_MODULE }}"
+    cmd: |
+      echo "Running golangci-lint in {{ .GO_MODULE }}"
+      {{.GOLANGCI_LINT_BIN}} run \
+                             --config {{.ROOT_DIR}}/.golangci.yml \
+                             {{if eq .FIX "true"}}--fix{{end}} \
+                             --new-from-rev="{{.REV}}"
+
+  lint:helm:
+    desc: Run Helm linters
+    deps:
+      - task: deps:helm
+    vars:
+      HELM_CHARTS:
+        sh: find ./install/charts -maxdepth 1 -mindepth 1 -type d -exec basename {} \; 2>/dev/null || echo ""
+    cmds:
+      - for: { var: HELM_CHARTS }
+        cmd: |
+          echo "Running helm lint on {{.ITEM}}"
+          {{.HELM_BIN}} dependency update ./install/charts/{{.ITEM}}
+          {{.HELM_BIN}} lint ./install/charts/{{.ITEM}} --with-subcharts
+
+  lint:
+    desc: Run all linters
+    deps:
+      - lint:go
+      - lint:helm
+
+  ##
+  ## License
+  ##
+  license:
+    desc: Check licenses
+    deps:
+      - task: deps:licensei
+    cmds:
+      - for: { var: GO_MODULES }
+        cmd: echo "Running licensei in {{.ITEM}}" && cd {{.ITEM}} && {{ .LICENSEI_BIN }} check --config {{.ROOT_DIR}}/.licensei.toml
+
+  license:cache:
+    desc: Update license cache
+    deps:
+      - task: deps:licensei
+    cmds:
+      - for: { var: GO_MODULES }
+        cmd: echo "Running licensei in {{.ITEM}}" && cd {{.ITEM}} && {{ .LICENSEI_BIN }} cache --config {{.ROOT_DIR}}/.licensei.toml
+
+  ##
+  ## Release
+  ##
+  release:create:
+    desc: Prepare release (RELEASE_VERSION=vX.Y.Z)
+    deps:
+      - task: deps:multimod-bin
+    vars:
+      RELEASE_VERSION: "{{ .RELEASE_VERSION }}"
+    cmds:
+      - 'if [ "$(git rev-parse --abbrev-ref HEAD)" != "release/{{.RELEASE_VERSION}}" ]; then git checkout -b release/{{.RELEASE_VERSION}}; fi'
+      - 'awk ''{gsub(/version: .*/,"version: {{.RELEASE_VERSION}}")}1'' versions.yaml > versions.yaml.tmp'
+      - "mv versions.yaml.tmp versions.yaml"
+      - |
+        git add .
+        git commit -S --signoff -m "release(oidc-gateway): prepare release {{.RELEASE_VERSION}}"
+      - |
+        {{ .MULTIMOD_BIN }} verify
+        {{ .MULTIMOD_BIN }} prerelease --all-module-sets --skip-go-mod-tidy=true --commit-to-different-branch=false
+      - |
+        git commit --amend -S --signoff -m "release(oidc-gateway): prepare release {{.RELEASE_VERSION}}"
+      - task: release:push
+
+  release:push:
+    internal: true
+    vars:
+      RELEASE_VERSION: "{{ .RELEASE_VERSION }}"
+    prompt:
+      - "Are you sure you want to push the release branch release/{{.RELEASE_VERSION}} to remote repository?"
+    cmds:
+      - git push --set-upstream origin release/{{.RELEASE_VERSION}} || true

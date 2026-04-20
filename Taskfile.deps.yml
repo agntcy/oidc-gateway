@@ -1,0 +1,126 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3"
+
+tasks:
+  default:
+    cmd: echo "Run the main Taskfile instead of this one."
+
+  deps:
+    desc: Install all dependencies
+    cmds:
+      - task: deps:helm
+      - task: deps:golangci-lint
+      - task: deps:licensei
+      - task: deps:multimod-bin
+      - task: deps:pre-commit
+      - task: deps:cleanup
+
+  deps:cleanup:
+    desc: Remove binaries in BIN_DIR except those currently used by the Taskfile
+    preconditions:
+      - test -d {{.BIN_DIR}}
+    cmd: |
+      kept="{{.BIN_DIR}}/Taskfile.yml
+      {{.HELM_BIN}}
+      {{.GOLANGCI_LINT_BIN}}
+      {{.LICENSEI_BIN}}
+      {{.MULTIMOD_BIN}}
+      {{.PRE_COMMIT_PYZ}}"
+
+      echo "Clean up unused/outdated binaries in {{.BIN_DIR}}"
+
+      for f in {{.BIN_DIR}}/*; do
+        [ -f "$f" ] || continue
+        echo "$kept" | grep -qFx "$f" && continue
+        rm -f "$f" && echo "Removed unused $f"
+      done
+
+  deps:bin-dir:
+    desc: Create bin directory
+    run: once
+    cmd: mkdir -p {{.BIN_DIR}}
+    status:
+      - test -d {{.BIN_DIR}}
+
+  deps:helm:
+    desc: Ensure supported Helm version is installed
+    internal: true
+    deps:
+      - deps:bin-dir
+    preconditions:
+      - which curl
+      - which tar
+    cmds:
+      - cmd: echo "Downloading Helm v{{.HELM_VERSION}}..."
+      - cmd: curl -sSfL 'https://get.helm.sh/helm-v{{.HELM_VERSION}}-{{OS}}-{{ARCH}}.tar.gz' --output - | tar xzvOf - '{{OS}}-{{ARCH}}/helm' > {{.HELM_BIN}}
+      - cmd: chmod +x {{.HELM_BIN}}
+    status:
+      - test -x {{.HELM_BIN}}
+
+  deps:golangci-lint:
+    desc: Install golangci-lint
+    internal: true
+    deps:
+      - deps:bin-dir
+    cmds:
+      - curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b {{.BIN_DIR}} v{{.GOLANGCI_LINT_VERSION}}
+      - mv {{.BIN_DIR}}/golangci-lint {{.GOLANGCI_LINT_BIN}}
+      - chmod +x {{.GOLANGCI_LINT_BIN}}
+    status:
+      - test -x {{.GOLANGCI_LINT_BIN}}
+
+  deps:licensei:
+    desc: Install licensei
+    internal: true
+    deps:
+      - deps:bin-dir
+    cmds:
+      - curl -sfL https://raw.githubusercontent.com/goph/licensei/master/install.sh | sh -s -- -b {{.BIN_DIR}} v{{.LICENSEI_VERSION}}
+      - mv {{.BIN_DIR}}/licensei {{.LICENSEI_BIN}}
+      - chmod +x {{.LICENSEI_BIN}}
+    status:
+      - test -x {{.LICENSEI_BIN}}
+
+  deps:multimod-bin:
+    desc: Build the multimod binary
+    internal: true
+    deps:
+      - deps:bin-dir
+    vars:
+      MULTIMOD_REPO_DIR: "{{ .BIN_DIR }}/opentelemetry-go-build-tools"
+    cmds:
+      - git clone https://github.com/open-telemetry/opentelemetry-go-build-tools --branch multimod/v{{.MULTIMOD_VERSION}} {{.MULTIMOD_REPO_DIR}}
+      - go build -C {{.MULTIMOD_REPO_DIR}}/multimod -o {{.MULTIMOD_BIN}} main.go
+      - rm -rf {{.MULTIMOD_REPO_DIR}}
+    status:
+      - test -x {{.MULTIMOD_BIN}}
+
+  deps:pre-commit:
+    desc: Install pre-commit
+    run: once
+    vars:
+      GIT_HOOKS_PATH:
+        sh: git config core.hooksPath || echo ""
+    if: '{{ eq .GIT_HOOKS_PATH "" }}'
+    cmds:
+      - curl -sL "https://github.com/pre-commit/pre-commit/releases/download/v{{.PRE_COMMIT_VERSION}}/pre-commit-{{.PRE_COMMIT_VERSION}}.pyz" -o {{.PRE_COMMIT_PYZ}}
+      - python3 {{.PRE_COMMIT_PYZ}} install
+    status:
+      - test -f {{.PRE_COMMIT_PYZ}}
+
+  deps:tidy:
+    desc: Ensure Go dependencies are up-to-date
+    cmds:
+      - for: { var: GO_MODULES }
+        cmd: go -C {{.ITEM}} mod tidy -go={{.GO_VERSION}}
+
+  deps:update:
+    desc: Update Go dependencies
+    cmds:
+      - for: { var: GO_MODULES }
+        cmd: |
+          echo "Updating dependencies in {{.ITEM}}" && \
+          go -C {{.ITEM}} get -u ./... && \
+          go -C {{.ITEM}} mod tidy -go={{.GO_VERSION}}

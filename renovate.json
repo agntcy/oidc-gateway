@@ -10,7 +10,7 @@
   "customManagers": [
     {
       "customType": "regex",
-      "managerFilePatterns": ["/(^|/)Taskfile[^/]*\\.yml$/"],
+      "fileMatch": ["(^|/)Taskfile[^/]*\\.yml$"],
       "matchStrings": [
         "(?m)^\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+registryUrl=(?<registryUrl>\\S+))?\\s*\\r?\\n\\s*(?<varName>[A-Z0-9_]+)_VERSION:\\s+\"?(?<currentValue>[^\"@\\s]+)\"?\\s*$"
       ],
@@ -21,7 +21,7 @@
     },
     {
       "customType": "regex",
-      "managerFilePatterns": ["/(^|/)Taskfile[^/]*\\.yml$/"],
+      "fileMatch": ["(^|/)Taskfile[^/]*\\.yml$"],
       "matchStrings": [
         "(?m)^\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+registryUrl=(?<registryUrl>\\S+))?\\s*\\r?\\n\\s*(?<varName>[A-Z0-9_]+)_VERSION:\\s+\"?(?:(?<currentValue>[^@\"\\s]+)@)?(?<currentDigest>sha256:[a-f0-9]+)\"?\\s*$"
       ],
