@@ -1,0 +1,56 @@
+services:
+  # ExtAuthz service (OIDC-based)
+  oidc-gateway:
+    build:
+      context: ../..
+      dockerfile: cmd/oidc-gateway/Dockerfile
+    container_name: oidc-gateway
+    ports:
+      - "9002:9002" # gRPC ext_authz
+    volumes:
+      - ./test/config.test.yaml:/etc/oidc-gateway/config.yaml:ro
+    environment:
+      LISTEN_ADDRESS: ":9002"
+      LOG_LEVEL: "debug"
+      CONFIG_PATH: "/etc/oidc-gateway/config.yaml"
+    networks:
+      - authz-test
+
+  # Envoy proxy with ext_authz filter
+  envoy:
+    image: envoyproxy/envoy:distroless-v1.37-latest
+    container_name: envoy-gateway
+    ports:
+      - "8080:8080" # HTTP/gRPC gateway
+      - "9901:9901" # Admin interface
+    volumes:
+      - ./test/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    command:
+      [
+        "-c",
+        "/etc/envoy/envoy.yaml",
+        "--service-cluster",
+        "test-cluster",
+      ]
+    depends_on:
+      - oidc-gateway
+      - mock-backend
+    networks:
+      - authz-test
+
+  # Mock backend API server (echoes headers from ext_authz)
+  mock-backend:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.mock
+    container_name: mock-backend
+    ports:
+      - "8888:8888"
+    environment:
+      LISTEN_ADDRESS: ":8888"
+    networks:
+      - authz-test
+
+networks:
+  authz-test:
+    driver: bridge

@@ -1,0 +1,210 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+# Global configuration
+nameOverride: ""
+fullnameOverride: ""
+
+# Envoy Gateway configuration
+envoy:
+  replicaCount: 1
+
+  image:
+    repository: envoyproxy/envoy
+    tag: distroless-v1.37-latest
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 8080
+    annotations: {}
+
+  # Backend service configuration
+  backend:
+    # Address of the upstream backend service
+    # Example: my-service.my-namespace.svc.cluster.local
+    address: ""
+    port: 8888
+    # Default Envoy route timeout for backend requests.
+    timeout: 30s
+    # Optional: path of a long-lived server-streaming RPC endpoint.
+    # When set, this path gets a separate route with listenRouteTimeout.
+    # Example: "/example.service.v1.EventService/Stream"
+    streamingPath: ""
+    # Dedicated route timeout for long-lived server-streaming RPCs.
+    # Use 0s to disable the timeout for streaming endpoints only.
+    listenRouteTimeout: 0s
+
+  # OIDC/JWT configuration for jwt_authn filter
+  oidc:
+    # Generic OIDC issuers. Add one entry per identity provider.
+    # Each entry creates one Envoy jwt_authn provider and one JWKS cluster.
+    # The name must be unique and a valid Envoy cluster name (alphanumeric + hyphen).
+    # Example:
+    # issuers:
+    #   - name: primary
+    #     enabled: true
+    #     issuer: "https://your-idp.example.com"
+    #     jwksUri: "https://your-idp.example.com/.well-known/jwks.json"
+    #     jwksHost: "your-idp.example.com"
+    #     audiences: []  # optional audience enforcement
+    issuers: []
+
+    # GitHub Actions OIDC issuer (special case).
+    # The authzserver has dedicated principal extraction for GitHub OIDC tokens,
+    # producing ghwf:repo:... principals for use in RBAC roles.
+    github:
+      enabled: false
+      issuer: "https://token.actions.githubusercontent.com"
+      jwksUri: "https://token.actions.githubusercontent.com/.well-known/jwks"
+      jwksHost: "token.actions.githubusercontent.com"
+      # Optional: restrict which audience values are accepted in GitHub OIDC tokens.
+      audiences: []
+
+    jwksTimeout: 5s
+    jwksCacheSeconds: 300
+
+  # SPIFFE integration for mTLS with backend
+  spiffe:
+    enabled: true
+    # SPIFFE ID will be: spiffe://{trustDomain}/ns/{namespace}/sa/envoy-gateway
+    # Assigned automatically by SPIRE
+    #
+    # Trust domain (must match SPIRE deployment)
+    trustDomain: example.org
+    # SPIRE controller className (must match SPIRE Controller Manager)
+    className: spire
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Admin interface (for debugging)
+  admin:
+    enabled: true
+    port: 9901
+
+# Authorization Server configuration (OIDC + Casbin)
+authServer:
+  replicaCount: 1
+
+  image:
+    repository: ghcr.io/agntcy/oidc-gateway
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 9002
+
+  config:
+    listenAddress: ":9002"
+    logLevel: info
+
+  # OIDC config (rendered to config.yaml, see configmap-authz.yaml)
+  # All values are user-specific - provide your own via -f values.yaml or --set
+  oidc:
+    claims:
+      userID: "sub"
+      emailPath: "email"
+
+    # Issuer-specific extraction. principalType: auto | user | client | github
+    # Example:
+    # issuers:
+    #   - provider: "https://dex.example.com"
+    #     principalType: "user"
+    #   - provider: "https://token.actions.githubusercontent.com"
+    #     principalType: "github"
+    issuers: []
+
+    principalType:
+      mode: "auto"
+      machineIdentityClaim: "client_id"
+      machineSubPattern: ""
+
+    userDenyList: []
+
+    publicPaths:
+      - "/healthz"
+      - "/grpc.reflection"
+
+    roles:
+      # Example admin: users: ["user:https://dex.example.com:admin@example.com"]
+      admin:
+        allowedMethods: ["*"]
+        users: []
+      # Example viewer: restrict to specific gRPC methods or HTTP paths
+      # viewer:
+      #   allowedMethods:
+      #     - "/example.service.v1.ExampleService/Read"
+      #   users: []
+      # Example machine identity (client credential flow):
+      # Example: clients: ["client:https://dex.example.com:service-client-id"]
+      # ci-writer:
+      #   allowedMethods: ["*"]
+      #   clients: []
+      # Example GitHub Actions workflow identity:
+      # deployer:
+      #   allowedMethods: ["*"]
+      #   githubWorkflows:
+      #     - "ghwf:repo:your-org/your-repo:workflow:deploy.yml:ref:refs/heads/main"
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Ingress configuration (optional)
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    external-dns.alpha.kubernetes.io/hostname: ""
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    nginx.ingress.kubernetes.io/grpc-backend: "true"
+  tls:
+    enabled: true
+    secretName: ""
+
+# Service account
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

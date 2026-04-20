@@ -1,0 +1,68 @@
+{{/*
+Copyright AGNTCY Contributors (https://github.com/agntcy)
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oidc-gateway.fullname" . }}-authz
+  labels:
+    {{- include "oidc-gateway.authzLabels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.authServer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "oidc-gateway.authzSelector" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-authz.yaml") . | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "oidc-gateway.authzSelector" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "oidc-gateway.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: authz-server
+        image: "{{ .Values.authServer.image.repository }}:{{ .Values.authServer.image.tag }}"
+        imagePullPolicy: {{ .Values.authServer.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        ports:
+        - name: grpc
+          containerPort: 9002
+          protocol: TCP
+        env:
+        - name: LISTEN_ADDRESS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "oidc-gateway.fullname" . }}-authz-config
+              key: LISTEN_ADDRESS
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "oidc-gateway.fullname" . }}-authz-config
+              key: LOG_LEVEL
+        - name: CONFIG_PATH
+          valueFrom:
+            configMapKeyRef:
+              name: {{ include "oidc-gateway.fullname" . }}-authz-config
+              key: CONFIG_PATH
+        volumeMounts:
+        - name: oidc-config
+          mountPath: /etc/oidc-gateway
+          readOnly: true
+        resources:
+          {{- toYaml .Values.authServer.resources | nindent 10 }}
+      volumes:
+      - name: oidc-config
+        configMap:
+          name: {{ include "oidc-gateway.fullname" . }}-authz-config
+          items:
+          - key: config.yaml
+            path: config.yaml

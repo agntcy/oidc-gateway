@@ -1,0 +1,49 @@
+# OIDC ext-authz configuration
+# Roles come only from config; no roles are extracted from JWT claims.
+# All values are user-specific - provide your own for your infrastructure.
+
+claims:
+  userID: "sub"
+  emailPath: "email"
+
+# Issuer-specific extraction. principalType: auto | user | client | github
+# Example:
+# issuers:
+#   - provider: "https://dex.example.com"
+#     principalType: "user"
+#   - provider: "https://token.actions.githubusercontent.com"
+#     principalType: "github"
+issuers: []
+
+# Fallback when issuer not in issuers. Allowed mode: auto | user | client
+principalType:
+  mode: "auto"
+  machineIdentityClaim: "client_id"
+  machineSubPattern: ""
+
+userDenyList: []
+
+publicPaths:
+  - "/healthz"
+  - "/grpc.reflection"
+
+roles:
+  # Example admin: users: ["user:https://dex.example.com:admin@example.com"]
+  admin:
+    allowedMethods: ["*"]
+    users: []
+  # Example viewer: restrict to specific gRPC methods or HTTP paths
+  # viewer:
+  #   allowedMethods:
+  #     - "/example.service.v1.ExampleService/Read"
+  #   users: []
+  # Example machine identity (client credential flow):
+  # ci-writer:
+  #   allowedMethods: ["*"]
+  #   clients: []
+  #   # Example: clients: ["client:https://dex.example.com:service-client-id"]
+  # Example GitHub Actions workflow identity:
+  # deployer:
+  #   allowedMethods: ["*"]
+  #   githubWorkflows:
+  #     - "ghwf:repo:your-org/your-repo:workflow:deploy.yml:ref:refs/heads/main"
