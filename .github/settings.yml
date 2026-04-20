@@ -5,19 +5,19 @@ repository:
   # See https://developer.github.com/v3/repos/#edit for all available settings.
 
   # The name of the repository. Changing this will rename the repository
-  name: repo-template
+  name: oidc-gateway
 
   # A short description of the repository that will show up on GitHub
-  description: Agntcy Project Repo Template
+  description: Policy-based OIDC gateway for Envoy
 
   # A URL with more information about the repository
-  homepage: https://www.example.com
+  homepage: https://docs.agntcy.org
 
   # A comma-separated list of topics to set on the repository
-  topics: github, probot
+  topics: oidc, envoy, authorization, authentication, casbin, jwt, gateway
 
   # Either `true` to make the repository private, or `false` to make it public.
-  private: true
+  private: false
 
   # Either `true` to enable issues for this repository, `false` to disable them.
   has_issues: true
@@ -26,7 +26,7 @@ repository:
   # If projects are disabled for the organization, passing `true` will cause an API error.
   has_projects: true
 
-  # Either `true` to enable the wiki for this repository, `false` to disable it.
+  # Either `true` to enable the wiki for this repository, `false` to disable them.
   has_wiki: false
 
   # Either `true` to enable downloads for this repository, `false` to disable them.
@@ -61,19 +61,11 @@ repository:
 # TODO: Enable this section once GitHub teams have been created & granted access to this repository
 # See https://developer.github.com/v3/teams/#add-or-update-team-repository for options
 # teams:
-#   # The permission to grant the team. Can be one of:
-#   # * `pull` - can pull, but not push to or administer this repository.
-#   # * `push` - can pull and push, but not administer this repository.
-#   # * `admin` - can pull, push and administer this repository.
-#   # * `maintain` - Recommended for project managers who need to manage the
-#   #   repository without access to sensitive or destructive actions.
-#   # * `triage` - Recommended for contributors who need to proactively manage
-#   #   issues and pull requests without write access.
-#   - name: <project-name-admins>
+#   - name: oidc-gateway-admins
 #     permission: admin
-#   - name: <project-name-maintainers>
+#   - name: oidc-gateway-maintainers
 #     permission: maintain
-#   - name: <project-name>
+#   - name: oidc-gateway
 #     permission: triage
 
 # TODO: Enable this section once repository has been created & no further modifications are needed
