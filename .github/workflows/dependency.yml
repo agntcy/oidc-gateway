@@ -2,10 +2,11 @@
 name: dependency
 
 # TODO: enable dependency review after migration
-# on:
+on:
 #   # Review dependencies on pull requests to the default branch
 #   pull_request:
 #     branches: ["main"]
+  workflow_dispatch: {}
 
 # Declare default permissions as read-only
 permissions: read-all
