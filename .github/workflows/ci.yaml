@@ -19,9 +19,221 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.result.outputs.code }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check for code changes
+        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!CHANGELOG.md'
+              - '!CODE_OF_CONDUCT.md'
+              - '!CONTRIBUTING.md'
+              - '!LICENSE'
+              - '!MAINTAINERS.md'
+              - '!README.md'
+              - '!RELEASE.md'
+              - '!SECURITY.md'
+              - '!.gitignore'
+
+      - name: Determine result
+        id: result
+        run: |
+          # Always run for tag pushes (releases), otherwise use paths-filter result
+          if [[ "${{ startsWith(github.ref, 'refs/tags/') }}" == "true" ]]; then
+            echo "code=true" >> $GITHUB_OUTPUT
+          else
+            echo "code=${{ steps.filter.outputs.code }}" >> $GITHUB_OUTPUT
+          fi
+
+  lint:
+    name: Lint
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.2"
+          cache-dependency-path: "**/*.sum"
+
+      - name: Install Task
+        uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
+
+      - name: Setup lint cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            ~/.cache/golangci-lint
+            ~/.cache/go-build
+          key: lint-cache-${{ runner.os }}-${{ hashFiles('**/*.sum') }}
+          restore-keys: |
+            lint-cache-${{ runner.os }}-
+
+      - name: Run linters
+        run: task lint
+
+  license:
+    name: License
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Install Task
+        uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
+
+      - name: Setup license cache
+        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+        with:
+          path: |
+            **/.licensei.cache
+          key: license-cache-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            license-cache-${{ runner.os }}-
+
+      - name: License cache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: task license:cache
+
+      - name: License check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: task license
+
+  test:
+    name: Test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26.2"
+          cache-dependency-path: "**/*.sum"
+
+      - name: Install Task
+        uses: go-task/setup-task@3be4020d41929789a01026e0e427a4321ce0ad44 # v2.0.0
+
+      - name: Run unit tests
+        run: task test:unit
+
+  build:
+    name: Build
+    needs:
+      - lint
+      - license
+      - test
+    uses: ./.github/workflows/reusable-build.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_repo: ghcr.io/agntcy
+      image_tag: ${{ github.sha }}
+
+  push:
+    name: Push
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs:
+      - lint
+      - license
+      - test
+    uses: ./.github/workflows/reusable-build.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_repo: ghcr.io/agntcy
+      image_tag: latest
+      push: true
+
+  helm-push-latest:
+    name: Helm push (latest)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    needs:
+      - push
+    uses: ./.github/workflows/reusable-release-helm.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_repo: ghcr.io/agntcy
+      release_tag: 0.0.0-latest
+
+  release:
+    name: Release
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs:
+      - lint
+      - license
+      - test
+    uses: ./.github/workflows/reusable-build.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_repo: ghcr.io/agntcy
+      image_tag: ${{ github.ref_name }}
+      push: true
+
+  helm-release:
+    name: Helm Release
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs:
+      - release
+    uses: ./.github/workflows/reusable-release-helm.yaml
+    permissions:
+      contents: read
+      packages: write
+    with:
+      image_repo: ghcr.io/agntcy
+      release_tag: ${{ github.ref_name }}
+
   success:
     name: Success
+    if: ${{ !cancelled() && !contains(needs.*.result, 'cancelled') && !contains(needs.*.result, 'failure') }}
+    needs:
+      - changes
+      - lint
+      - license
+      - test
+      - build
+      - push
+      - helm-push-latest
+      - release
+      - helm-release
     runs-on: ubuntu-latest
     steps:
       - name: Echo Success
-        run: echo "::notice Success!"
+        run: |
+          if [[ "${{ needs.changes.outputs.code }}" == "true" ]]; then
+            echo "::notice Success! All code checks passed."
+          else
+            echo "::notice Success! No code changes detected, skipped builds and tests."
+          fi

@@ -1,0 +1,126 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      image_repo:
+        required: true
+        type: string
+        description: "Image repo to use."
+      image_tag:
+        required: true
+        type: string
+        description: "Image tag to use."
+      push:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to push the image to the registry."
+
+jobs:
+  prepare:
+    name: Prepare
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Generate matrix
+        id: generate
+        uses: docker/bake-action/subaction/matrix@a66e1c87e2eca0503c343edf1d208c716d54b8a8 # v7.1.0
+
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+    strategy:
+      matrix:
+        include: ${{ fromJson(needs.prepare.outputs.matrix) }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: notused
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Docker metadata
+        id: metadata
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6.0.0
+        with:
+          images: |
+            ${{ inputs.image_repo }}/${{ matrix.target }},enable=true
+          tags: |
+            type=raw,value=${{ inputs.image_tag }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
+
+      - name: Create artifacts directory
+        run: mkdir /tmp/artifacts
+
+      - name: Build and push
+        if: ${{ inputs.push }}
+        uses: docker/bake-action@a66e1c87e2eca0503c343edf1d208c716d54b8a8 # v7.1.0
+        with:
+          push: true
+          provenance: false
+          files: |
+            ./docker-bake.hcl
+            cwd://${{ steps.metadata.outputs.bake-file }}
+          targets: ${{ matrix.target }}
+          set: |
+            *.platform=linux/amd64,linux/arm64
+            *.output=type=registry
+            *.cache-to=type=gha,mode=max,scope=${{ matrix.target }}
+            *.cache-from=type=gha,scope=${{ matrix.target }}
+        env:
+          IMAGE_REPO: ${{ inputs.image_repo }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+
+      - name: Build and load
+        if: ${{ !inputs.push }}
+        uses: docker/bake-action@a66e1c87e2eca0503c343edf1d208c716d54b8a8 # v7.1.0
+        with:
+          provenance: false
+          files: |
+            ./docker-bake.hcl
+            cwd://${{ steps.metadata.outputs.bake-file }}
+          targets: ${{ matrix.target }}
+          set: |
+            *.platform=linux/amd64
+            *.output=type=docker,dest=/tmp/artifacts/${{ matrix.target }}.tar
+            *.cache-to=type=gha,mode=max,scope=${{ matrix.target }}
+            *.cache-from=type=gha,scope=${{ matrix.target }}
+        env:
+          IMAGE_REPO: ${{ inputs.image_repo }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          DOCKER_BUILD_RECORD_UPLOAD: false
+
+      - name: Upload artifacts
+        if: ${{ !inputs.push }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ${{ matrix.target }}
+          path: /tmp/artifacts/${{ matrix.target }}.tar
+          retention-days: 7

@@ -1,0 +1,55 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+name: Container Security Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *" # Daily at 03:00 UTC
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  issues: write
+
+jobs:
+  trivy-scan:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - ghcr.io/agntcy/oidc-gateway:latest
+    steps:
+      - name: Set image name
+        id: image-name
+        run: |
+          IMAGE_NAME=$(echo "${{ matrix.image }}" | sed -E 's|.*/||; s|[:@].*||')
+          echo "name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          image-ref: ${{ matrix.image }}
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
+          format: sarif
+          output: trivy-${{ steps.image-name.outputs.name }}.sarif
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH,MEDIUM"
+          ignore-unfixed: true
+
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@c10b8064de6f491fea524254123dbe5e09572f13 # v4.35.1
+        with:
+          sarif_file: trivy-${{ steps.image-name.outputs.name }}.sarif
+          category: trivy-${{ steps.image-name.outputs.name }}
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: trivy-report-${{ steps.image-name.outputs.name }}
+          path: trivy-${{ steps.image-name.outputs.name }}.sarif
+          retention-days: 7
