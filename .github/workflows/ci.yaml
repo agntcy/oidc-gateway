@@ -1,0 +1,27 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  pull_request:
+
+# Declare default permissions as read-only
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  success:
+    name: Success
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo Success
+        run: echo "::notice Success!"
