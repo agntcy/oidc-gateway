@@ -1,0 +1,36 @@
+# IDEs
+.vscode/
+.idea/
+.continue/
+
+# Secrets
+.env
+.envrc
+
+# Builds
+.bin/
+
+# MacOS
+.DS_Store
+
+# Test output
+*.test
+*.out
+
+# Coverage output
+.coverage/
+
+# Licensei
+.licensei.cache
+
+tmp/
+
+# AI
+.cursor/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Helm
+install/charts/oidc-gateway/charts/

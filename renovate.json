@@ -1,0 +1,121 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigestsToSemver",
+    ":semanticCommitTypeAll(chore)",
+    ":dependencyDashboard"
+  ],
+  "configMigration": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "fileMatch": ["(^|/)Taskfile[^/]*\\.yml$"],
+      "matchStrings": [
+        "(?m)^\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+registryUrl=(?<registryUrl>\\S+))?\\s*\\r?\\n\\s*(?<varName>[A-Z0-9_]+)_VERSION:\\s+\"?(?<currentValue>[^\"@\\s]+)\"?\\s*$"
+      ],
+      "currentValueTemplate": "{{currentValue}}",
+      "description": [
+        "Custom dependency manager for updating tool version defined in Taskfile."
+      ]
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["(^|/)Taskfile[^/]*\\.yml$"],
+      "matchStrings": [
+        "(?m)^\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?(?:\\s+registryUrl=(?<registryUrl>\\S+))?\\s*\\r?\\n\\s*(?<varName>[A-Z0-9_]+)_VERSION:\\s+\"?(?:(?<currentValue>[^@\"\\s]+)@)?(?<currentDigest>sha256:[a-f0-9]+)\"?\\s*$"
+      ],
+      "currentValueTemplate": "{{currentValue}}",
+      "description": [
+        "Custom dependency manager for updating image tag@digest defined in Taskfile."
+      ]
+    }
+  ],
+  "dependencyDashboardAutoclose": true,
+  "dependencyDashboardLabels": ["dependencies"],
+  "dependencyDashboardOSVVulnerabilitySummary": "all",
+  "enabled": true,
+  "minimumReleaseAge": "3 days",
+  "schedule": ["before 6am on Monday"],
+  "enabledManagers": [
+    "custom.regex",
+    "dockerfile",
+    "github-actions",
+    "gomod",
+    "helmv3"
+  ],
+  "labels": ["dependencies"],
+  "ignoreDeps": [
+    "github.com/agntcy/oidc-gateway/authzserver",
+    "github.com/agntcy/oidc-gateway/cmd/oidc-gateway"
+  ],
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": {
+    "enabled": true
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["major"],
+      "enabled": false,
+      "description": ["Ignore major dependency updates."]
+    },
+    {
+      "matchCategories": ["golang"],
+      "addLabels": ["go"],
+      "description": ["Add go label to PRs which bumps go dependencies."]
+    },
+    {
+      "groupName": "Go patches",
+      "groupSlug": "go-patches",
+      "matchDatasources": ["go"],
+      "matchUpdateTypes": ["patch"],
+      "description": ["Group Go dependency patch updates in single PR."]
+    },
+    {
+      "groupName": "Github Actions",
+      "groupSlug": "github-actions",
+      "matchDatasources": ["github-tags"],
+      "addLabels": ["ci"],
+      "description": [
+        "Add ci label to PRs which are related to Github Actions.",
+        "Group CI dependency updates in single PR."
+      ]
+    },
+    {
+      "groupName": "Taskfile",
+      "groupSlug": "taskfile",
+      "matchFileNames": ["Taskfile.*"],
+      "addLabels": ["build"],
+      "description": [
+        "Add build label to PRs which are related to build tools defined in Taskfile.",
+        "Group Taskfile dependency updates in single PR."
+      ]
+    },
+    {
+      "matchJsonata": [
+        "$exists(vulnerabilityFixVersion) or isVulnerabilityAlert = true"
+      ],
+      "enabled": true,
+      "description": [
+        "Always allow vulnerability/security fixes, even when other rules disable majors or specific dependencies."
+      ]
+    }
+  ],
+  "postUpdateOptions": [
+    "gomodTidy",
+    "gomodUpdateImportPaths"
+  ],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 5,
+  "printConfig": false,
+  "rebaseWhen": "behind-base-branch",
+  "reviewersFromCodeOwners": true,
+  "semanticCommits": "enabled",
+  "timezone": "Etc/UTC",
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "minimumReleaseAge": null,
+    "schedule": ["at any time"]
+  }
+}
