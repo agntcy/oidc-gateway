@@ -6,7 +6,7 @@ go 1.26.2
 replace github.com/agntcy/oidc-gateway/authzserver => ../../authzserver
 
 require (
-	github.com/agntcy/oidc-gateway/authzserver v0.1.0
+	github.com/agntcy/oidc-gateway/authzserver v0.1.1
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	google.golang.org/grpc v1.80.0
 	gopkg.in/yaml.v3 v3.0.1
