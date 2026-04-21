@@ -29,7 +29,7 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
       - name: authz-server
-        image: "{{ .Values.authServer.image.repository }}:{{ .Values.authServer.image.tag }}"
+        image: "{{ .Values.authServer.image.repository }}:{{ .Values.authServer.image.tag | default .Chart.AppVersion }}"
         imagePullPolicy: {{ .Values.authServer.image.pullPolicy }}
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}

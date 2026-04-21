@@ -166,6 +166,13 @@ data:
                                   claim_name: iss
                             {{- end }}
                           rules:
+                            # Public paths: no JWT required — must come before the catch-all
+                            - match:
+                                path: "/healthz"
+                            - match:
+                                # gRPC reflection prefix — excludes all reflection sub-methods
+                                prefix: "/grpc.reflection"
+                            # All other paths: require a valid JWT from any configured issuer
                             - match:
                                 prefix: "/"
                               requires:
@@ -179,10 +186,6 @@ data:
                                     {{- if .Values.envoy.oidc.github.enabled }}
                                     - provider_name: github
                                     {{- end }}
-                            - match:
-                                prefix: "/grpc.reflection"
-                            - match:
-                                prefix: "/"
                       {{- end }}
                       # 3. External authorization - OIDC ext_authz (Casbin RBAC)
                       - name: envoy.filters.http.ext_authz
