@@ -296,12 +296,6 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
               sni: {{ .jwksHost }}
-              common_tls_context:
-                validation_context:
-                  match_typed_subject_alt_names:
-                    - san_type: DNS
-                      matcher:
-                        exact: {{ .jwksHost }}
         {{- end }}
         {{- end }}
 
@@ -324,12 +318,6 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
               sni: {{ .Values.envoy.oidc.github.jwksHost }}
-              common_tls_context:
-                validation_context:
-                  match_typed_subject_alt_names:
-                    - san_type: DNS
-                      matcher:
-                        exact: {{ .Values.envoy.oidc.github.jwksHost }}
         {{- end }}
 
         {{- if .Values.envoy.spiffe.enabled }}
