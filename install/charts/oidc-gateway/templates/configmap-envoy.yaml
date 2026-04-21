@@ -75,7 +75,7 @@ data:
                                     request_mutations:
                                       - remove: "x-jwt-payload"
                             {{- end }}
-                            # gRPC reflection - no JWT required (public path)
+                            # gRPC reflection - no JWT required, no ext_authz (public)
                             - match:
                                 prefix: "/grpc.reflection"
                               route:
@@ -83,6 +83,10 @@ data:
                                 timeout: {{ .Values.envoy.backend.timeout }}
                               request_headers_to_remove:
                                 - "authorization"
+                              typed_per_filter_config:
+                                envoy.filters.http.ext_authz:
+                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                                  disabled: true
                             # Catch-all - require JWT, strip Authorization before backend
                             - match:
                                 prefix: "/"
@@ -166,6 +170,13 @@ data:
                                   claim_name: iss
                             {{- end }}
                           rules:
+                            # Public paths: no JWT required — must come before the catch-all
+                            - match:
+                                path: "/healthz"
+                            - match:
+                                # gRPC reflection prefix — excludes all reflection sub-methods
+                                prefix: "/grpc.reflection"
+                            # All other paths: require a valid JWT from any configured issuer
                             - match:
                                 prefix: "/"
                               requires:
@@ -179,10 +190,6 @@ data:
                                     {{- if .Values.envoy.oidc.github.enabled }}
                                     - provider_name: github
                                     {{- end }}
-                            - match:
-                                prefix: "/grpc.reflection"
-                            - match:
-                                prefix: "/"
                       {{- end }}
                       # 3. External authorization - OIDC ext_authz (Casbin RBAC)
                       - name: envoy.filters.http.ext_authz
@@ -243,6 +250,7 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
               common_tls_context:
+                # Present our SPIFFE identity to the backend
                 tls_certificate_sds_secret_configs:
                 - name: {{ printf "spiffe://%s/ns/%s/sa/%s" (default "example.org" .Values.envoy.spiffe.trustDomain) .Release.Namespace (include "oidc-gateway.envoyServiceAccountName" .) | quote }}
                   sds_config:
@@ -251,6 +259,21 @@ data:
                       grpc_services:
                       - envoy_grpc:
                           cluster_name: spiffe_agent
+                # Validate backend peer certificate via SPIRE trust bundle
+                combined_validation_context:
+                  default_validation_context:
+                    match_typed_subject_alt_names:
+                      - san_type: URI
+                        matcher:
+                          prefix: {{ printf "spiffe://%s/" (default "example.org" .Values.envoy.spiffe.trustDomain) | quote }}
+                  validation_context_sds_secret_config:
+                    name: {{ printf "spiffe://%s" (default "example.org" .Values.envoy.spiffe.trustDomain) | quote }}
+                    sds_config:
+                      api_config_source:
+                        api_type: GRPC
+                        grpc_services:
+                        - envoy_grpc:
+                            cluster_name: spiffe_agent
           {{- end }}
 
         {{- range .Values.envoy.oidc.issuers }}
@@ -273,6 +296,12 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
               sni: {{ .jwksHost }}
+              common_tls_context:
+                validation_context:
+                  match_typed_subject_alt_names:
+                    - san_type: DNS
+                      matcher:
+                        exact: {{ .jwksHost }}
         {{- end }}
         {{- end }}
 
@@ -295,6 +324,12 @@ data:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
               sni: {{ .Values.envoy.oidc.github.jwksHost }}
+              common_tls_context:
+                validation_context:
+                  match_typed_subject_alt_names:
+                    - san_type: DNS
+                      matcher:
+                        exact: {{ .Values.envoy.oidc.github.jwksHost }}
         {{- end }}
 
         {{- if .Values.envoy.spiffe.enabled }}

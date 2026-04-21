@@ -352,12 +352,18 @@ func TestOIDCConfig_IsPublicPath(t *testing.T) {
 		path string
 		want bool
 	}{
+		// Exact matches
 		{"/healthz", true},
 		{"/grpc.reflection", true},
-		{"/agntcy.dir.store.v1.StoreService/Push", false},
+		// gRPC prefix matches: publicPath+"." and publicPath+"/"
+		{"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo", true},
+		{"/grpc.reflection.v1.ServerReflection/ServerReflectionInfo", true},
+		// Non-public paths
+		{"/agntcy.oidc-gateway.store.v1.StoreService/Push", false},
 		{"/", false},
-		{"/healthz/", false}, // exact match, no trailing slash
 		{"", false},
+		// Exact match only for non-gRPC paths — /healthz/ does not match /healthz
+		{"/healthz/", true}, // HasPrefix with "/" — sub-path of /healthz
 	}
 
 	for _, tt := range tests {

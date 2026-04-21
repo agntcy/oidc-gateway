@@ -72,7 +72,8 @@ envoy:
     #
     # Trust domain (must match SPIRE deployment)
     trustDomain: example.org
-    # SPIRE controller className (must match SPIRE Controller Manager)
+    # SPIRE controller className (must match SPIRE Controller Manager deployment)
+    # Default: "spire" — override if your SPIRE install uses a different class name
     className: spire
 
   resources:
@@ -94,7 +95,8 @@ authServer:
 
   image:
     repository: ghcr.io/agntcy/oidc-gateway
-    tag: v0.1.0
+    # tag defaults to Chart.appVersion when empty; set explicitly to pin a specific release
+    tag: ""
     pullPolicy: IfNotPresent
 
   service:

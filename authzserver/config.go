@@ -6,7 +6,6 @@ package authzserver
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 )
 
@@ -217,7 +216,26 @@ func (c *OIDCConfig) normalizePublicPaths() {
 	}
 }
 
-// IsPublicPath returns true if the path is in publicPaths (exact match).
+// IsPublicPath returns true if the path is in publicPaths.
+// Matching rules:
+//   - Exact match: path == publicPath (e.g. "/healthz")
+//   - gRPC prefix match: path starts with publicPath+"." or publicPath+"/"
+//     This covers gRPC method paths like /grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo
+//     matching a publicPath entry of /grpc.reflection.
+//
+// Note: in typical deployments Envoy handles public routes (healthz, reflection)
+// at the route level by disabling ext_authz per-route. publicPaths in this
+// config acts as defense-in-depth for any path that reaches the authz server.
 func (c *OIDCConfig) IsPublicPath(path string) bool {
-	return slices.Contains(c.PublicPaths, path)
+	for _, pub := range c.PublicPaths {
+		if path == pub {
+			return true
+		}
+		// gRPC package/service prefix: /grpc.reflection matches /grpc.reflection.v1alpha.Service/Method
+		if strings.HasPrefix(path, pub+".") || strings.HasPrefix(path, pub+"/") {
+			return true
+		}
+	}
+
+	return false
 }
