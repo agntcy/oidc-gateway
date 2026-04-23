@@ -1,0 +1,51 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release
+
+on:
+  workflow_call:
+    inputs:
+      image_repo:
+        required: true
+        type: string
+        description: "Image repo to use."
+      release_tag:
+        required: true
+        type: string
+        description: "Release tag for all components."
+
+jobs:
+  image:
+    name: Image
+    uses: ./.github/workflows/reusable-build.yaml
+    with:
+      image_repo: ${{ inputs.image_repo }}
+      image_tag: ${{ inputs.release_tag }}
+      push: true
+
+  chart:
+    name: Helm chart
+    uses: ./.github/workflows/reusable-release-helm.yaml
+    with:
+      image_repo: ${{ inputs.image_repo }}
+      release_tag: ${{ inputs.release_tag }}
+
+  release:
+    name: Release
+    needs:
+      - image
+      - chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: Release ${{ inputs.release_tag }}
+          draft: true
+          prerelease: false
