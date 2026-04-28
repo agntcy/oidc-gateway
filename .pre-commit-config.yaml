@@ -9,4 +9,5 @@ repos:
         entry: "task pre-commit:golangci-lint -- "
         language: system
         pass_filenames: true
+        require_serial: true
         types: [go]

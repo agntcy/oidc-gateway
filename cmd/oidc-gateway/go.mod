@@ -5,6 +5,8 @@ go 1.26.2
 // Replace local modules
 replace github.com/agntcy/oidc-gateway/authzserver => ../../authzserver
 
+replace github.com/agntcy/oidc-gateway/identity => ../../identity
+
 require (
 	github.com/agntcy/oidc-gateway/authzserver v0.1.1
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
@@ -13,6 +15,7 @@ require (
 )
 
 require (
+	github.com/agntcy/oidc-gateway/identity v0.0.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/casbin/casbin/v2 v2.135.0 // indirect
 	github.com/casbin/govaluate v1.10.0 // indirect

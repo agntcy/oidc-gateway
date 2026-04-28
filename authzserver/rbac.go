@@ -11,19 +11,18 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
+	"github.com/casbin/casbin/v2/util"
 )
 
 //go:embed model.conf
 var modelConf string
 
 // OIDCRoleResolver handles role-based authorization using Casbin.
-// Principals are user:{iss}:{sub}, client:{iss}:{client_id}, or ghwf:...
-// Roles come only from config; no roles are extracted from JWT claims.
+// Roles map canonical principals from config to allowed routes.
 type OIDCRoleResolver struct {
-	config                  *OIDCConfig
-	enforcer                *casbin.Enforcer
-	logger                  *slog.Logger
-	githubWorkflowWildcards map[string][]string // role -> wildcard principals (with '*')
+	config   *OIDCConfig
+	enforcer *casbin.Enforcer
+	logger   *slog.Logger
 }
 
 // NewOIDCRoleResolver creates a new Casbin-based role resolver for OIDC.
@@ -46,11 +45,14 @@ func NewOIDCRoleResolver(config *OIDCConfig, logger *slog.Logger) (*OIDCRoleReso
 		return nil, fmt.Errorf("failed to create Casbin enforcer: %w", err)
 	}
 
+	if ok := enforcer.AddNamedMatchingFunc("g", "keyMatch", util.KeyMatch); !ok {
+		return nil, fmt.Errorf("failed to configure principal wildcard matching")
+	}
+
 	resolver := &OIDCRoleResolver{
-		config:                  config,
-		enforcer:                enforcer,
-		logger:                  logger,
-		githubWorkflowWildcards: map[string][]string{},
+		config:   config,
+		enforcer: enforcer,
+		logger:   logger,
 	}
 
 	if err := resolver.loadPolicies(); err != nil {
@@ -99,71 +101,12 @@ func (r *OIDCRoleResolver) Authorize(principal, path string) error {
 		return nil
 	}
 
-	// Fallback: wildcard matching for GitHub workflow principals only.
-	// Patterns are configured in roles.*.githubWorkflows with '*' wildcard.
-	if strings.HasPrefix(principal, "ghwf:") {
-		if ok, err := r.authorizeGitHubWorkflowWildcard(principal, path); err != nil {
-			return err
-		} else if ok {
-			return nil
-		}
-	}
-
 	return fmt.Errorf("principal %q is not authorized for %s", principal, path)
-}
-
-func (r *OIDCRoleResolver) authorizeGitHubWorkflowWildcard(principal, path string) (bool, error) {
-	for roleKey, patterns := range r.githubWorkflowWildcards {
-		for _, pattern := range patterns {
-			if !githubWorkflowWildcardMatch(pattern, principal) {
-				continue
-			}
-
-			allowed, err := r.enforcer.Enforce(roleKey, path, "access")
-			if err != nil {
-				r.logger.Error("Casbin wildcard enforcement error",
-					"principal", principal,
-					"path", path,
-					"role", roleKey,
-					"pattern", pattern,
-					"error", err,
-				)
-
-				return false, fmt.Errorf("authorization wildcard check failed: %w", err)
-			}
-
-			if allowed {
-				r.logger.Debug("authorized via github workflow wildcard",
-					"principal", principal,
-					"path", path,
-					"role", roleKey,
-					"pattern", pattern,
-				)
-
-				return true, nil
-			}
-		}
-	}
-
-	return false, nil
-}
-
-// githubWorkflowWildcardMatch matches '*' wildcards where '*' means any char sequence (including '/').
-func githubWorkflowWildcardMatch(pattern, principal string) bool {
-	if !isSupportedGitHubWorkflowWildcard(pattern) {
-		return false
-	}
-
-	// Validation guarantees exactly one wildcard at the end, so match is simple
-	// prefix comparison against the pattern without trailing '*'.
-	prefix := strings.TrimSuffix(pattern, "*")
-
-	return strings.HasPrefix(principal, prefix)
 }
 
 // isPrincipalDenied checks if the principal is in the deny list.
 func (r *OIDCRoleResolver) isPrincipalDenied(principal string) bool {
-	for _, denied := range r.config.UserDenyList {
+	for _, denied := range r.config.DenyList {
 		if strings.EqualFold(principal, denied) {
 			return true
 		}
@@ -187,23 +130,9 @@ func (r *OIDCRoleResolver) loadPolicies() error {
 			policies = append(policies, []string{roleKey, method, "access"})
 		}
 
-		// Principal-to-role: g, principal, role:X
-		for _, u := range role.Users {
-			groupings = append(groupings, []string{u, roleKey})
-		}
-
-		for _, c := range role.Clients {
-			groupings = append(groupings, []string{c, roleKey})
-		}
-
-		for _, g := range role.GitHubWorkflows {
-			if strings.Contains(g, "*") {
-				r.githubWorkflowWildcards[roleKey] = append(r.githubWorkflowWildcards[roleKey], g)
-
-				continue
-			}
-
-			groupings = append(groupings, []string{g, roleKey})
+		// Principal-to-role: g, principal-or-pattern, role:X
+		for _, principal := range role.Principals {
+			groupings = append(groupings, []string{principal, roleKey})
 		}
 	}
 

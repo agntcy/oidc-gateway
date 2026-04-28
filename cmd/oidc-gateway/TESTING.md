@@ -15,14 +15,16 @@ docker-compose up --build
 ## What Gets Tested
 
 1. ✅ Health check (no auth)
-2. ✅ Request without x-jwt-payload → 401
-3. ✅ Request with invalid payload → 401
+2. ✅ Request without credentials on non-public path → 401
+3. ✅ Request with invalid payload (without x509) → 401
 4. ✅ Request with valid OIDC payload → 200
-5. ✅ Principal headers forwarded (x-authorized-principal, x-user-id, x-principal-type)
+5. ✅ Request with SPIFFE JWT-SVID payload → 200
+6. ⚠ XFCC SPIFFE simulation is best-effort in local non-mTLS setup
+7. ✅ Canonical identity header forwarded (`x-auth-principal`)
 
 ## Services
 
-- **oidc-gateway** (port 9002) - OIDC ExtAuthz service (reads x-jwt-payload, Casbin RBAC)
+- **oidc-gateway** (port 9002) - ExtAuthz service (x509 + bearer fallback, Casbin RBAC)
 - **envoy** (port 8080) - Envoy gateway with ext_authz filter
 - **mock-backend** (port 8888) - Mock backend (echoes headers)
 
@@ -47,24 +49,29 @@ curl http://localhost:9901/stats | grep ext_authz
 The test uses `test/config.test.yaml` mounted at `/etc/oidc-gateway/config.yaml`. It allows:
 
 - **Public path**: `/healthz` (no auth)
-- **Admin user**: `user:https://dex.example.com:admin@example.com` (all methods)
+- **Admin principal**: `oidc:dex:admin@example.com` (all methods)
+- **SPIFFE principal**: `spiffe:*` (all methods)
 
 To test deny list or different roles, edit `test/config.test.yaml` and restart:
 
 ```yaml
-userDenyList:
-  - "user:https://dex.example.com:blocked@example.com"
+denyList:
+  - "oidc:dex:blocked@example.com"
 
 roles:
   admin:
     allowedMethods: ["*"]
-    users:
-      - "user:https://dex.example.com:admin@example.com"
+    principals:
+      - "oidc:dex:admin@example.com"
 ```
 
 ## Production Flow
 
-In production, Envoy's `jwt_authn` filter validates the Bearer JWT and sets `x-jwt-payload` before ext_authz. This test setup passes `x-jwt-payload` directly for simplicity (dev/test only).
+In production, Envoy prefers SPIFFE X.509-SVID when present, otherwise validates
+Bearer JWTs and sets `x-jwt-payload` before ext_authz. This test setup passes
+`x-jwt-payload` directly for simplicity (dev/test only). The local X.509 case in
+`test.sh` uses `x-forwarded-client-cert` simulation, which may be rejected unless
+downstream mTLS and trusted cert handling are configured.
 
 ## Cleanup
 

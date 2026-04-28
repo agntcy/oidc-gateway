@@ -38,7 +38,7 @@ func main() {
 	logger.Info("loaded OIDC config",
 		"roles", len(oidcConfig.Roles),
 		"publicPaths", len(oidcConfig.PublicPaths),
-		"denyListSize", len(oidcConfig.UserDenyList),
+		"denyListSize", len(oidcConfig.DenyList),
 	)
 
 	authzServer, err := authzserver.NewOIDCAuthorizationServer(oidcConfig, logger)

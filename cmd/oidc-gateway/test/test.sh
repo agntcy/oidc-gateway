@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test script for OIDC ext_authz integration.
+# Test script for gateway ext_authz integration.
 # Sends x-jwt-payload with mock JWT claims (dev/test only; production uses jwt_authn).
 
 set -e
@@ -8,8 +8,14 @@ ENVOY_URL="http://localhost:8080"
 
 # Mock JWT payload for testing (user in admin role per config.test.yaml)
 MOCK_PAYLOAD='{"iss":"https://dex.example.com","email":"admin@example.com"}'
+SPIFFE_JWT_PAYLOAD='{"iss":"https://spire-oidc.example.org","sub":"spiffe://example.org/ns/default/sa/workload"}'
+# XFCC (x-forwarded-client-cert) simulation for local testing:
+# - By=... is the forwarding proxy identity
+# - URI=... is the client cert URI SAN (SPIFFE ID) seen by Envoy
+# In production this should come from verified downstream mTLS, not client input.
+SPIFFE_XFCC='By=spiffe://example.org/ns/default/sa/envoy;URI=spiffe://example.org/ns/default/sa/workload'
 
-echo "🧪 Testing OIDC ext_authz Integration"
+echo "🧪 Testing gateway ext_authz Integration"
 echo "====================================="
 echo ""
 
@@ -62,20 +68,11 @@ if [ "$HTTP_CODE" = "200" ]; then
     echo "$BODY" | jq .
     echo ""
 
-    # Check OIDC headers forwarded by ext_authz
-    echo "Checking forwarded principal headers..."
-    PRINCIPAL=$(echo "$BODY" | jq -r '.authenticated.authorized_principal')
-    USER_ID=$(echo "$BODY" | jq -r '.authenticated.user_id')
-    PTYPE=$(echo "$BODY" | jq -r '.authenticated.principal_type')
-
+    # Check canonical principal header forwarded by ext_authz
+    echo "Checking forwarded canonical principal header..."
+    PRINCIPAL=$(echo "$BODY" | jq -r '.authenticated.auth_principal')
     if [ "$PRINCIPAL" != "null" ] && [ "$PRINCIPAL" != "" ]; then
-        echo -e "${GREEN}✓ Authorized principal: $PRINCIPAL${NC}"
-    fi
-    if [ "$USER_ID" != "null" ] && [ "$USER_ID" != "" ]; then
-        echo -e "${GREEN}✓ User ID: $USER_ID${NC}"
-    fi
-    if [ "$PTYPE" != "null" ] && [ "$PTYPE" != "" ]; then
-        echo -e "${GREEN}✓ Principal type: $PTYPE${NC}"
+        echo -e "${GREEN}✓ Auth principal: $PRINCIPAL${NC}"
     fi
     echo ""
 else
@@ -83,6 +80,51 @@ else
     echo "Response:"
     echo "$BODY" | jq .
     echo ""
+fi
+
+echo "Test 5: Request with SPIFFE JWT-SVID payload"
+echo "--------------------------------------------"
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
+    -H "x-jwt-payload: $SPIFFE_JWT_PAYLOAD" \
+    "$ENVOY_URL/api/test")
+
+HTTP_CODE=$(echo "$RESPONSE" | awk -F: '/HTTP_CODE/{print $2}')
+BODY=$(echo "$RESPONSE" | sed '/HTTP_CODE/d')
+
+if [ "$HTTP_CODE" = "200" ]; then
+    PRINCIPAL=$(echo "$BODY" | jq -r '.authenticated.auth_principal')
+    if [[ "$PRINCIPAL" == spiffe:* ]]; then
+        echo -e "${GREEN}✓ SPIFFE JWT-SVID accepted: $PRINCIPAL${NC}\n"
+    else
+        echo -e "${RED}✗ Expected spiffe principal, got $PRINCIPAL${NC}\n"
+    fi
+else
+    echo -e "${RED}✗ Expected 200, got $HTTP_CODE${NC}\n"
+fi
+
+echo "Test 6: Request with XFCC SPIFFE identity (x509 simulation)"
+echo "-----------------------------------------------------------"
+RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" \
+    -H "x-forwarded-client-cert: $SPIFFE_XFCC" \
+    -H "x-jwt-payload: invalid-json" \
+    "$ENVOY_URL/api/test")
+
+HTTP_CODE=$(echo "$RESPONSE" | awk -F: '/HTTP_CODE/{print $2}')
+BODY=$(echo "$RESPONSE" | sed '/HTTP_CODE/d')
+
+if [ "$HTTP_CODE" = "200" ]; then
+    PRINCIPAL=$(echo "$BODY" | jq -r '.authenticated.auth_principal')
+    if [[ "$PRINCIPAL" == spiffe:* ]]; then
+        echo -e "${GREEN}✓ XFCC SPIFFE identity preferred over invalid bearer: $PRINCIPAL${NC}\n"
+    else
+        echo -e "${RED}✗ Expected spiffe principal from XFCC, got $PRINCIPAL${NC}\n"
+    fi
+elif [ "$HTTP_CODE" = "401" ]; then
+    echo "⚠ XFCC simulation not trusted by local non-mTLS listener (expected in this setup)."
+    echo "  For real X.509-SVID validation, run downstream mTLS with SPIFFE certs."
+    echo ""
+else
+    echo -e "${RED}✗ Expected 200, got $HTTP_CODE${NC}\n"
 fi
 
 echo "🎉 Testing Complete!"

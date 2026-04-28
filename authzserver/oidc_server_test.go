@@ -34,12 +34,20 @@ func makeCheckRequest(path string, headers map[string]string) *authv3.CheckReque
 
 func validOIDCConfig() *OIDCConfig {
 	return &OIDCConfig{
-		Claims:      ClaimsConfig{UserID: "email", EmailPath: "email"},
+		Claims:      ClaimsConfig{PrincipalClaim: "email", EmailClaimPath: "email"},
 		PublicPaths: []string{"/healthz"},
+		Issuers: []IssuerConfig{
+			{ProviderKey: "dex", Provider: "https://dex.example.com", AuthFamily: "oidc"},
+			{Provider: "https://spire-oidc.example.org", AuthFamily: "spiffe"},
+		},
 		Roles: map[string]OIDCRole{
 			"admin": {
 				AllowedMethods: []string{"*"},
-				Users:          []string{"user:https://dex.example.com:admin@example.com"},
+				Principals:     []string{"oidc:dex:admin@example.com"},
+			},
+			"spiffe-admin": {
+				AllowedMethods: []string{"*"},
+				Principals:     []string{"spiffe:*"},
 			},
 		},
 	}
@@ -54,7 +62,7 @@ func TestNewOIDCAuthorizationServer(t *testing.T) {
 	})
 
 	t.Run("invalid config", func(t *testing.T) {
-		cfg := &OIDCConfig{Claims: ClaimsConfig{UserID: ""}, Roles: map[string]OIDCRole{"x": {AllowedMethods: []string{"*"}}}}
+		cfg := &OIDCConfig{Claims: ClaimsConfig{PrincipalClaim: ""}, Roles: map[string]OIDCRole{"x": {AllowedMethods: []string{"*"}}}}
 
 		_, err := NewOIDCAuthorizationServer(cfg, slog.Default())
 		if err == nil {
@@ -137,7 +145,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 
 	t.Run("principal in deny list returns 403", func(t *testing.T) {
 		cfg := validOIDCConfig()
-		cfg.UserDenyList = []string{"user:https://dex.example.com:admin@example.com"}
+		cfg.DenyList = []string{"oidc:dex:admin@example.com"}
 
 		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
 		if err != nil {
@@ -156,7 +164,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 		}
 	})
 
-	t.Run("authorized request returns 200 with headers", func(t *testing.T) {
+	t.Run("authorized request returns 200 with x-auth-principal header", func(t *testing.T) {
 		req := makeCheckRequest("/api/test", map[string]string{HeaderJWTPayload: testPayloadAdmin})
 
 		resp, err := srv.Check(ctx, req)
@@ -174,8 +182,12 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 		}
 
 		headers := okResp.GetHeaders()
-		if len(headers) < 2 {
-			t.Errorf("expected at least 2 headers, got %d", len(headers))
+		if len(headers) != 1 {
+			t.Fatalf("expected exactly 1 header, got %d", len(headers))
+		}
+
+		if headers[0].GetHeader().GetKey() != HeaderAuthPrincipal {
+			t.Fatalf("expected %s header, got %s", HeaderAuthPrincipal, headers[0].GetHeader().GetKey())
 		}
 	})
 
@@ -184,7 +196,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 		cfg.Roles = map[string]OIDCRole{
 			"viewer": {
 				AllowedMethods: []string{"/other/path"},
-				Users:          []string{"user:https://dex.example.com:admin@example.com"},
+				Principals:     []string{"oidc:dex:admin@example.com"},
 			},
 		}
 
@@ -202,6 +214,51 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 
 		if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
 			t.Errorf("expected PermissionDenied, got code %d", resp.GetStatus().GetCode())
+		}
+	})
+
+	t.Run("x509 identity takes precedence over bearer", func(t *testing.T) {
+		req := makeCheckRequest("/api/test", map[string]string{
+			HeaderXFCC:       `By=spiffe://example.org/ns/default/sa/envoy;URI=spiffe://example.org/ns/default/sa/workload`,
+			HeaderJWTPayload: "invalid-json-that-would-fail-if-used",
+		})
+
+		resp, err := srv.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.OK) {
+			t.Fatalf("expected OK for x509-priority request, got %d", resp.GetStatus().GetCode())
+		}
+	})
+
+	t.Run("x509 identity denied by authorization policy", func(t *testing.T) {
+		cfg := validOIDCConfig()
+		cfg.Roles = map[string]OIDCRole{
+			"spiffe-limited": {
+				AllowedMethods: []string{"/only/this/path"},
+				Principals:     []string{"spiffe:*"},
+			},
+		}
+
+		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", map[string]string{
+			HeaderXFCC:       `By=spiffe://example.org/ns/default/sa/envoy;URI=spiffe://example.org/ns/default/sa/workload`,
+			HeaderJWTPayload: "invalid-json-that-would-fail-if-used",
+		})
+
+		resp, err := srv2.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.PermissionDenied) {
+			t.Fatalf("expected PermissionDenied for x509 policy deny, got %d", resp.GetStatus().GetCode())
 		}
 	})
 }

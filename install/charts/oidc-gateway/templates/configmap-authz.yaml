@@ -19,37 +19,23 @@ data:
   config.yaml: |
     # OIDC ext-authz configuration. Roles from config only; no roles from JWT claims.
     claims:
-      userID: {{ .Values.authServer.oidc.claims.userID | quote }}
-      emailPath: {{ .Values.authServer.oidc.claims.emailPath | quote }}
+      principalClaim: {{ .Values.authServer.oidc.claims.principalClaim | quote }}
+      emailClaimPath: {{ .Values.authServer.oidc.claims.emailClaimPath | quote }}
 
     issuers:
       {{- if .Values.authServer.oidc.issuers }}
       {{- range .Values.authServer.oidc.issuers }}
-      - provider: {{ .provider | quote }}
-        principalType: {{ .principalType | quote }}
-        {{- if .machineIdentityClaim }}
-        machineIdentityClaim: {{ .machineIdentityClaim | quote }}
-        {{- end }}
-        {{- if .machineSubPattern }}
-        machineSubPattern: {{ .machineSubPattern | quote }}
-        {{- end }}
+      - providerKey: {{ .providerKey | quote }}
+        provider: {{ .provider | quote }}
+        authFamily: {{ default "oidc" .authFamily | quote }}
       {{- end }}
       {{- else }}
       []
       {{- end }}
 
-    principalType:
-      mode: {{ .Values.authServer.oidc.principalType.mode | quote }}
-      machineIdentityClaim: {{ .Values.authServer.oidc.principalType.machineIdentityClaim | quote }}
-      {{- if .Values.authServer.oidc.principalType.machineSubPattern }}
-      machineSubPattern: {{ .Values.authServer.oidc.principalType.machineSubPattern | quote }}
-      {{- else }}
-      machineSubPattern: ""
-      {{- end }}
-
-    userDenyList:
-      {{- if .Values.authServer.oidc.userDenyList }}
-      {{- range .Values.authServer.oidc.userDenyList }}
+    denyList:
+      {{- if .Values.authServer.oidc.denyList }}
+      {{- range .Values.authServer.oidc.denyList }}
       - {{ . | quote }}
       {{- end }}
       {{- else }}
@@ -69,29 +55,13 @@ data:
           {{- range $role.allowedMethods }}
           - {{ . | quote }}
           {{- end }}
-        {{- if $role.users }}
-        users:
-          {{- range $role.users }}
+        {{- if $role.principals }}
+        principals:
+          {{- range $role.principals }}
           - {{ . | quote }}
           {{- end }}
         {{- else }}
-        users: []
-        {{- end }}
-        {{- if $role.clients }}
-        clients:
-          {{- range $role.clients }}
-          - {{ . | quote }}
-          {{- end }}
-        {{- else }}
-        clients: []
-        {{- end }}
-        {{- if $role.githubWorkflows }}
-        githubWorkflows:
-          {{- range $role.githubWorkflows }}
-          - {{ . | quote }}
-          {{- end }}
-        {{- else }}
-        githubWorkflows: []
+        principals: []
         {{- end }}
       {{- end }}
       {{- else }}

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/agntcy/oidc-gateway/identity"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
@@ -19,10 +20,9 @@ import (
 
 // Header names for JWT and principal propagation.
 const (
-	HeaderJWTPayload          = "x-jwt-payload"          // verified JWT payload (set by Envoy jwt_authn)
-	HeaderAuthorizedPrincipal = "x-authorized-principal" // canonical principal forwarded to upstream
-	HeaderUserID              = "x-user-id"              // user ID (same as principal)
-	HeaderPrincipalType       = "x-principal-type"       // principal type (e.g. user, service)
+	HeaderJWTPayload    = "x-jwt-payload"    // verified JWT payload (set by Envoy jwt_authn)
+	HeaderAuthPrincipal = "x-auth-principal" // canonical identity forwarded to backend
+	HeaderXFCC          = "x-forwarded-client-cert"
 )
 
 // OIDCAuthorizationServer implements the Envoy ext_authz gRPC API for OIDC.
@@ -73,68 +73,74 @@ func (s *OIDCAuthorizationServer) Check(ctx context.Context, req *authv3.CheckRe
 	if s.config.IsPublicPath(path) {
 		s.logger.Debug("allowed: public path", "path", path)
 
-		return s.allowResponse("", "public"), nil
+		return s.allowResponse(""), nil
 	}
 
-	// 2. Read verified JWT payload from x-jwt-payload
 	headers := httpReq.GetHeaders()
+	// 2. Prefer verified client X.509 identity if present; ignore bearer token in this case.
+	if spiffeID := extractSPIFFEFromRequest(req, headers); spiffeID != "" {
+		principal := identity.Identity{
+			AuthFamily: identity.AuthFamilySPIFFE,
+			Principal:  spiffeID,
+		}.PrincipalString()
 
+		if err := s.roleResolver.Authorize(string(principal), path); err != nil {
+			s.logger.Info("authorization denied", "principal", principal, "path", path, "reason", err.Error())
+
+			return s.denyResponse(codes.PermissionDenied, err.Error()), nil
+		}
+
+		s.logger.Info("authorization granted via x509", "principal", principal, "path", path)
+
+		return s.allowResponse(string(principal)), nil
+	}
+
+	// 3. Fallback to bearer token via verified JWT payload from x-jwt-payload.
+	// If no x509 and no bearer -> deny.
 	payloadJSON := getHeader(headers, HeaderJWTPayload)
 	if payloadJSON == "" {
-		s.logger.Warn("missing x-jwt-payload header - jwt_authn may not have run or request is unauthenticated")
+		s.logger.Warn("missing credentials: neither x509 SPIFFE identity nor verified JWT payload present")
 
-		return s.denyResponse(codes.Unauthenticated, "missing verified JWT payload"), nil
+		return s.denyResponse(codes.Unauthenticated, "missing credentials"), nil
 	}
 
-	// 3. Extract principal (issuer-specific)
-	principal, principalType, err := ExtractPrincipal(payloadJSON, s.config)
+	// 4. Extract canonical principal (OIDC or SPIFFE JWT-SVID).
+	principal, err := ExtractPrincipal(payloadJSON, s.config)
 	if err != nil {
 		s.logger.Warn("failed to extract principal", "error", err)
 
 		return s.denyResponse(codes.Unauthenticated, "invalid token: "+err.Error()), nil
 	}
 
-	// 4. User deny list -> Deny
-	email := GetEmail(payloadJSON, s.config.Claims.EmailPath)
-	if s.roleResolver.IsDenied(principal, email) {
+	// 5. User deny list -> Deny
+	email := GetEmail(payloadJSON, s.config.Claims.EmailClaimPath)
+	if s.roleResolver.IsDenied(string(principal), email) {
 		s.logger.Info("denied: principal in deny list", "principal", principal)
 
 		return s.denyResponse(codes.PermissionDenied, "principal is in the deny list"), nil
 	}
 
-	// 5. Casbin authorization
-	if err := s.roleResolver.Authorize(principal, path); err != nil {
+	// 6. Casbin authorization
+	if err := s.roleResolver.Authorize(string(principal), path); err != nil {
 		s.logger.Info("authorization denied", "principal", principal, "path", path, "reason", err.Error())
 
 		return s.denyResponse(codes.PermissionDenied, err.Error()), nil
 	}
 
-	// 6. Allow with canonical principal headers
+	// 7. Allow with canonical principal header
 	s.logger.Info("authorization granted", "principal", principal, "path", path)
 
-	return s.allowResponse(principal, principalType), nil
+	return s.allowResponse(string(principal)), nil
 }
 
-func (s *OIDCAuthorizationServer) allowResponse(principal, principalType string) *authv3.CheckResponse {
+func (s *OIDCAuthorizationServer) allowResponse(principal string) *authv3.CheckResponse {
 	headers := []*corev3.HeaderValueOption{}
 
 	if principal != "" {
-		headers = append(headers,
-			&corev3.HeaderValueOption{
-				Header: &corev3.HeaderValue{Key: HeaderAuthorizedPrincipal, Value: principal},
-				Append: wrapperspb.Bool(false), // overwrite any client-supplied value
-			},
-			&corev3.HeaderValueOption{
-				Header: &corev3.HeaderValue{Key: HeaderUserID, Value: principal},
-				Append: wrapperspb.Bool(false), // overwrite any client-supplied value
-			},
-		)
-		if principalType != "" {
-			headers = append(headers, &corev3.HeaderValueOption{
-				Header: &corev3.HeaderValue{Key: HeaderPrincipalType, Value: principalType},
-				Append: wrapperspb.Bool(false), // overwrite any client-supplied value
-			})
-		}
+		headers = append(headers, &corev3.HeaderValueOption{
+			Header: &corev3.HeaderValue{Key: HeaderAuthPrincipal, Value: principal},
+			Append: wrapperspb.Bool(false), // overwrite any client-supplied value
+		})
 	}
 
 	return &authv3.CheckResponse{
@@ -173,6 +179,34 @@ func getHeader(headers map[string]string, key string) string {
 	for k, v := range headers {
 		if strings.EqualFold(k, key) {
 			return v
+		}
+	}
+
+	return ""
+}
+
+func extractSPIFFEFromRequest(req *authv3.CheckRequest, headers map[string]string) string {
+	// 1) Prefer Envoy provided source principal (mTLS authenticated principal).
+	if sourcePrincipal := req.GetAttributes().GetSource().GetPrincipal(); strings.HasPrefix(sourcePrincipal, "spiffe://") {
+		return sourcePrincipal
+	}
+
+	// 2) Fallback to XFCC URI extracted from peer cert details.
+	return extractSPIFFEFromXFCC(getHeader(headers, HeaderXFCC))
+}
+
+func extractSPIFFEFromXFCC(xfcc string) string {
+	for entry := range strings.SplitSeq(xfcc, ",") {
+		for field := range strings.SplitSeq(entry, ";") {
+			trimmed := strings.TrimSpace(field)
+			if !strings.HasPrefix(trimmed, "URI=") {
+				continue
+			}
+
+			uri := strings.Trim(strings.TrimPrefix(trimmed, "URI="), "\"")
+			if strings.HasPrefix(uri, "spiffe://") {
+				return uri
+			}
 		}
 	}
 
