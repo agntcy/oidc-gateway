@@ -2,6 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/agntcy/oidc-gateway?display_name=tag)](CHANGELOG.md)
 [![Lint](https://github.com/agntcy/oidc-gateway/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/marketplace/actions/super-linter)
+[![Coverage](https://codecov.io/gh/agntcy/oidc-gateway/branch/main/graph/badge.svg)](https://codecov.io/gh/agntcy/oidc-gateway)
 [![Contributor-Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-fbab2c.svg)](CODE_OF_CONDUCT.md)
 
 `oidc-gateway` is an Envoy-based authentication and authorization gateway for
