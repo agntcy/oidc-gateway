@@ -3,47 +3,42 @@
 # All values are user-specific - provide your own for your infrastructure.
 
 claims:
-  userID: "sub"
-  emailPath: "email"
+  principalClaim: "sub"
+  emailClaimPath: "email"
 
-# Issuer-specific extraction. principalType: auto | user | client | github
+headers:
+  authPrincipal: "x-auth-principal"
+
+# Issuer mapping for canonical principal extraction.
+# authFamily: oidc | spiffe
 # Example:
 # issuers:
-#   - provider: "https://dex.example.com"
-#     principalType: "user"
-#   - provider: "https://token.actions.githubusercontent.com"
-#     principalType: "github"
+#   - providerKey: "dex"
+#     provider: "https://dex.example.com"
+#     authFamily: "oidc"
+#   - providerKey: "github"
+#     provider: "https://token.actions.githubusercontent.com"
+#     authFamily: "oidc"
 issuers: []
 
-# Fallback when issuer not in issuers. Allowed mode: auto | user | client
-principalType:
-  mode: "auto"
-  machineIdentityClaim: "client_id"
-  machineSubPattern: ""
-
-userDenyList: []
+denyList: []
 
 publicPaths:
   - "/healthz"
   - "/grpc.reflection"
 
 roles:
-  # Example admin: users: ["user:https://dex.example.com:admin@example.com"]
+  # Example admin: principals: ["oidc:dex:admin@example.com"]
   admin:
     allowedMethods: ["*"]
-    users: []
+    principals: []
   # Example viewer: restrict to specific gRPC methods or HTTP paths
   # viewer:
   #   allowedMethods:
   #     - "/example.service.v1.ExampleService/Read"
-  #   users: []
-  # Example machine identity (client credential flow):
-  # ci-writer:
-  #   allowedMethods: ["*"]
-  #   clients: []
-  #   # Example: clients: ["client:https://dex.example.com:service-client-id"]
+  #   principals: ["oidc:dex:viewer@example.com"]
   # Example GitHub Actions workflow identity:
   # deployer:
   #   allowedMethods: ["*"]
-  #   githubWorkflows:
-  #     - "ghwf:repo:your-org/your-repo:workflow:deploy.yml:ref:refs/heads/main"
+  #   principals:
+  #     - "oidc:github:repo:your-org/your-repo:workflow:deploy.yml:ref:refs/heads/main"

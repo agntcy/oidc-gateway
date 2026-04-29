@@ -7,8 +7,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/agntcy/oidc-gateway/identity"
 )
 
 // jwtCompactFormParts is the number of segments in a compact JWT: header.payload.signature.
@@ -57,122 +58,95 @@ func decodeJWTBase64URLSegment(seg string) ([]byte, error) {
 }
 
 // ExtractPrincipal extracts the canonical principal from the JWT payload JSON.
-// Uses issuer-specific logic: GitHub -> ghwf:..., else -> user:{iss}:{id} or client:{iss}:{client_id}.
-// The user identifier claim is configurable via config.Claims.UserID (e.g., "sub" or "email").
-//
-//nolint:nonamedreturns // named returns clarify principal, principalType, err for callers
-func ExtractPrincipal(payloadJSON string, config *OIDCConfig) (principal string, principalType string, err error) {
+// OIDC principals are normalized as oidc:<providerKey>:<principal>.
+// SPIFFE JWT-SVID principals are normalized as spiffe:<spiffe-id>.
+// The principal claim is configurable via config.Claims.PrincipalClaim (e.g., "sub" or "email").
+func ExtractPrincipal(payloadJSON string, config *OIDCConfig) (identity.IdentityPrincipal, error) {
 	if config == nil {
-		return "", "", fmt.Errorf("config is required")
+		return "", fmt.Errorf("config is required")
 	}
 
 	raw, err := parsePayloadJSON(payloadJSON)
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 
 	var payload map[string]any
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return "", "", fmt.Errorf("invalid JWT payload JSON: %w", err)
+		return "", fmt.Errorf("invalid JWT payload JSON: %w", err)
 	}
 
 	iss := getString(payload, "iss")
 	if iss == "" {
-		return "", "", fmt.Errorf("missing iss claim")
+		return "", fmt.Errorf("missing iss claim")
 	}
 
-	userIDClaim := config.Claims.UserID
+	issuerCfg := config.GetIssuerConfig(iss)
+	if issuerCfg == nil {
+		return "", fmt.Errorf("issuer %q is not configured", iss)
+	}
 
-	// Issuer-specific extraction
-	if ic := config.GetIssuerConfig(iss); ic != nil {
-		machineSub := ic.MachineSubPattern
-		if machineSub == "" {
-			machineSub = config.PrincipalType.MachineSubPattern
+	if issuerCfg.AuthFamily == string(identity.AuthFamilySPIFFE) {
+		spiffeID := getString(payload, "sub")
+		normalized := identity.Identity{
+			AuthFamily: identity.AuthFamilySPIFFE,
+			Principal:  spiffeID,
 		}
 
-		switch ic.PrincipalType {
-		case PrincipalTypeGitHub:
-			return extractGitHubPrincipal(payload)
-		case PrincipalTypeUser:
-			return extractUserPrincipal(payload, iss, userIDClaim)
-		case PrincipalTypeClient:
-			return extractClientPrincipal(payload, iss, ic.MachineIdentityClaim)
-		case PrincipalTypeAuto, "":
-			return extractAutoPrincipal(payload, iss, ic.MachineIdentityClaim, machineSub, userIDClaim)
-		}
-	}
-
-	// Fallback to top-level principalType
-	pt := config.PrincipalType
-	switch pt.Mode {
-	case PrincipalTypeUser:
-		return extractUserPrincipal(payload, iss, userIDClaim)
-	case PrincipalTypeClient:
-		return extractClientPrincipal(payload, iss, pt.MachineIdentityClaim)
-	case PrincipalTypeAuto, "":
-		return extractAutoPrincipal(payload, iss, pt.MachineIdentityClaim, pt.MachineSubPattern, userIDClaim)
-	}
-
-	return "", "", fmt.Errorf("unknown principal type mode: %s", pt.Mode)
-}
-
-func extractUserPrincipal(payload map[string]any, iss, userIDClaim string) (string, string, error) {
-	if userIDClaim == "" {
-		userIDClaim = "sub"
-	}
-
-	id := getString(payload, userIDClaim)
-	if id == "" {
-		return "", "", fmt.Errorf("missing %s claim for user principal", userIDClaim)
-	}
-
-	return fmt.Sprintf("user:%s:%s", iss, id), PrincipalTypeUser, nil
-}
-
-func extractClientPrincipal(payload map[string]any, iss, machineClaim string) (string, string, error) {
-	clientID := getMachineIdentity(payload, machineClaim)
-	if clientID == "" {
-		return "", "", fmt.Errorf("missing %s claim for client principal", machineClaim)
-	}
-
-	return fmt.Sprintf("client:%s:%s", iss, clientID), PrincipalTypeClient, nil
-}
-
-func extractAutoPrincipal(payload map[string]any, iss, machineClaim, machineSubPattern, userIDClaim string) (string, string, error) {
-	sub := getString(payload, "sub")
-	clientID := getMachineIdentity(payload, machineClaim)
-
-	// No sub -> machine
-	if sub == "" {
-		if clientID == "" {
-			return "", "", fmt.Errorf("missing sub and %s for principal", machineClaim)
+		if err := normalized.Validate(); err != nil {
+			return "", fmt.Errorf("invalid SPIFFE principal: %w", err)
 		}
 
-		return fmt.Sprintf("client:%s:%s", iss, clientID), PrincipalTypeClient, nil
+		return normalized.PrincipalString(), nil
 	}
 
-	// machineSubPattern matches sub -> machine
-	if machineSubPattern != "" {
-		re, err := regexp.Compile(machineSubPattern)
-		if err == nil && re.MatchString(sub) {
-			if clientID == "" {
-				return "", "", fmt.Errorf("sub matches machine pattern but missing %s", machineClaim)
-			}
+	var principalValue string
 
-			return fmt.Sprintf("client:%s:%s", iss, clientID), PrincipalTypeClient, nil
-		}
+	switch {
+	case issuerCfg.Provider == GitHubIssuer || issuerCfg.ProviderKey == "github":
+		principalValue, err = extractGitHubPrincipal(payload)
+	default:
+		principalValue, err = extractOIDCPrincipal(payload, config.Claims.PrincipalClaim)
 	}
 
-	// sub == client_id -> machine
-	if clientID != "" && sub == clientID {
-		return fmt.Sprintf("client:%s:%s", iss, clientID), PrincipalTypeClient, nil
+	if err != nil {
+		return "", err
 	}
 
-	// Default: user (uses configurable claim)
-	return extractUserPrincipal(payload, iss, userIDClaim)
+	if issuerCfg.ProviderKey == "" {
+		return "", fmt.Errorf("providerKey is required for issuer %q", iss)
+	}
+
+	normalized := identity.Identity{
+		AuthFamily: identity.AuthFamilyOIDC,
+		Principal:  fmt.Sprintf("%s:%s", issuerCfg.ProviderKey, principalValue),
+	}
+
+	if err := normalized.Validate(); err != nil {
+		return "", fmt.Errorf("invalid OIDC principal: %w", err)
+	}
+
+	return normalized.PrincipalString(), nil
 }
 
-func extractGitHubPrincipal(payload map[string]any) (string, string, error) {
+func extractOIDCPrincipal(payload map[string]any, principalClaim string) (string, error) {
+	if principalClaim == "" {
+		principalClaim = "sub"
+	}
+
+	if value := getString(payload, principalClaim); value != "" {
+		return value, nil
+	}
+
+	// Fallback for machine tokens where principal claim may not exist.
+	if value := getMachineIdentity(payload); value != "" {
+		return value, nil
+	}
+
+	return "", fmt.Errorf("missing %s claim for OIDC principal", principalClaim)
+}
+
+func extractGitHubPrincipal(payload map[string]any) (string, error) {
 	repo := getString(payload, "repository")
 	ref := getString(payload, "ref")
 	env := getString(payload, "environment")
@@ -184,7 +158,7 @@ func extractGitHubPrincipal(payload map[string]any) (string, string, error) {
 	}
 
 	if repo == "" {
-		return "", "", fmt.Errorf("missing repository claim for GitHub principal")
+		return "", fmt.Errorf("missing repository claim for GitHub principal")
 	}
 
 	// Extract workflow file from workflow_ref: owner/repo/.github/workflows/file.yml@ref
@@ -202,19 +176,19 @@ func extractGitHubPrincipal(payload map[string]any) (string, string, error) {
 	}
 
 	if workflowFile == "" {
-		return "", "", fmt.Errorf("missing workflow_ref or job_workflow_ref for GitHub principal")
+		return "", fmt.Errorf("missing workflow_ref or job_workflow_ref for GitHub principal")
 	}
 
 	if ref == "" {
 		ref = "refs/heads/main" // fallback
 	}
 
-	principal := fmt.Sprintf("ghwf:repo:%s:workflow:%s:ref:%s", repo, workflowFile, ref)
+	principal := fmt.Sprintf("repo:%s:workflow:%s:ref:%s", repo, workflowFile, ref)
 	if env != "" {
 		principal += ":env:" + env
 	}
 
-	return principal, "ghwf", nil
+	return principal, nil
 }
 
 func getString(m map[string]any, key string) string {
@@ -228,12 +202,8 @@ func getString(m map[string]any, key string) string {
 	return s
 }
 
-func getMachineIdentity(payload map[string]any, claim string) string {
-	if claim == "" {
-		claim = "client_id"
-	}
-
-	s := getString(payload, claim)
+func getMachineIdentity(payload map[string]any) string {
+	s := getString(payload, "client_id")
 	if s != "" {
 		return s
 	}
@@ -243,8 +213,8 @@ func getMachineIdentity(payload map[string]any, claim string) string {
 
 // GetEmail extracts email from payload for deny list matching.
 // Supports dot notation for nested paths (e.g. "email" or "claims.email").
-func GetEmail(payloadJSON, emailPath string) string {
-	if payloadJSON == "" || emailPath == "" {
+func GetEmail(payloadJSON, emailClaimPath string) string {
+	if payloadJSON == "" || emailClaimPath == "" {
 		return ""
 	}
 
@@ -258,7 +228,7 @@ func GetEmail(payloadJSON, emailPath string) string {
 		return ""
 	}
 
-	v := getNestedValue(payload, strings.Split(emailPath, "."))
+	v := getNestedValue(payload, strings.Split(emailClaimPath, "."))
 	if s, ok := v.(string); ok {
 		return s
 	}

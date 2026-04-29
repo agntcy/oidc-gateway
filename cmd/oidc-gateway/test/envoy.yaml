@@ -1,5 +1,5 @@
-# Envoy configuration for testing OIDC ext_authz integration.
-# Implements: Header Mutation, Multiple Issuers (jwt_authn), Strip Authorization.
+# Envoy configuration for testing multi-token ext_authz integration.
+# Implements: header mutation, OIDC jwt_authn providers, SPIFFE signal passthrough.
 
 node:
   id: "test-envoy"
@@ -27,6 +27,9 @@ static_resources:
                 stat_prefix: ingress_http
                 codec_type: AUTO
                 http2_protocol_options: {}
+                forward_client_cert_details: APPEND_FORWARD
+                set_current_client_cert_details:
+                  uri: true
 
                 access_log:
                   - name: envoy.access_loggers.stdout
@@ -75,7 +78,8 @@ static_resources:
                           request_headers_to_remove:
                             - "authorization"
 
-                        # All other requests - require auth
+                        # All other requests go through ext_authz.
+                        # If credentials are missing/invalid, ext_authz returns deny.
                         - match:
                             prefix: "/"
                           route:
@@ -85,11 +89,17 @@ static_resources:
                             - "authorization"
 
                 http_filters:
-                  # 1. Header Mutation - strips client-supplied x-jwt-payload on /api/jwt (defense-in-depth)
-                  #    Global config has no mutations; per-route adds strip only for JWT route
+                  # 1. Header Mutation
+                  # Always strip client-supplied principal header to prevent identity spoofing.
+                  # This static local config uses the default authz header: x-auth-principal.
+                  # Keep x-jwt-payload only for /api/test dev passthrough (authn input to ext_authz).
+                  # /api/jwt has additional per-route stripping for client-supplied x-jwt-payload.
                   - name: envoy.filters.http.header_mutation
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                      mutations:
+                        request_mutations:
+                          - remove: "x-auth-principal"
 
                   # 2. JWT Authentication - multiple issuers
                   - name: envoy.filters.http.jwt_authn
@@ -106,11 +116,6 @@ static_resources:
                               value_prefix: "Bearer "
                           forward: true
                           forward_payload_header: "x-jwt-payload"
-                          claim_to_headers:
-                            - header_name: x-user-id
-                              claim_name: sub
-                            - header_name: x-user-issuer
-                              claim_name: iss
                         github:
                           issuer: "https://token.actions.githubusercontent.com"
                           remote_jwks:
@@ -125,11 +130,6 @@ static_resources:
                               value_prefix: "Bearer "
                           forward: true
                           forward_payload_header: "x-jwt-payload"
-                          claim_to_headers:
-                            - header_name: x-user-id
-                              claim_name: sub
-                            - header_name: x-user-issuer
-                              claim_name: iss
                       rules:
                         - match:
                             prefix: "/api/jwt"
@@ -145,7 +145,7 @@ static_resources:
                         - match:
                             prefix: "/"
 
-                  # 3. External authorization - OIDC ext_authz (Casbin RBAC)
+                  # 3. External authorization (Casbin RBAC over canonical principals)
                   - name: envoy.filters.http.ext_authz
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
@@ -155,6 +155,8 @@ static_resources:
                           cluster_name: ext_authz
                         timeout: 5s
                       failure_mode_allow: false
+                      include_peer_certificate: true
+                      include_tls_session: true
                       # Note: allowed_upstream_headers is HTTP-only (authorization_response).
                       # For gRPC ext_authz, response headers are forwarded to upstream by default.
 

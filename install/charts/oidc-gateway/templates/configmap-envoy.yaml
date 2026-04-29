@@ -31,13 +31,46 @@ data:
               address: 0.0.0.0
               port_value: 8080
           filter_chains:
-            - filters:
+            - {{- if and .Values.envoy.spiffe.enabled .Values.envoy.spiffe.downstream.enabled }}
+              transport_socket:
+                name: envoy.transport_sockets.tls
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+                  require_client_certificate: {{ .Values.envoy.spiffe.downstream.requireClientCertificate }}
+                  common_tls_context:
+                    tls_certificate_sds_secret_configs:
+                    - name: {{ printf "spiffe://%s/ns/%s/sa/%s" (default "example.org" .Values.envoy.spiffe.trustDomain) .Release.Namespace (include "oidc-gateway.envoyServiceAccountName" .) | quote }}
+                      sds_config:
+                        api_config_source:
+                          api_type: GRPC
+                          grpc_services:
+                          - envoy_grpc:
+                              cluster_name: spiffe_agent
+                    combined_validation_context:
+                      default_validation_context:
+                        match_typed_subject_alt_names:
+                          - san_type: URI
+                            matcher:
+                              prefix: {{ printf "spiffe://%s/" (default "example.org" .Values.envoy.spiffe.trustDomain) | quote }}
+                      validation_context_sds_secret_config:
+                        name: {{ printf "spiffe://%s" (default "example.org" .Values.envoy.spiffe.trustDomain) | quote }}
+                        sds_config:
+                          api_config_source:
+                            api_type: GRPC
+                            grpc_services:
+                            - envoy_grpc:
+                                cluster_name: spiffe_agent
+              {{- end }}
+              filters:
                 - name: envoy.filters.network.http_connection_manager
                   typed_config:
                     "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                     stat_prefix: ingress_http
                     codec_type: AUTO
                     http2_protocol_options: {}
+                    forward_client_cert_details: APPEND_FORWARD
+                    set_current_client_cert_details:
+                      uri: true
                     access_log:
                       - name: envoy.access_loggers.stdout
                         typed_config:
@@ -106,6 +139,10 @@ data:
                       - name: envoy.filters.http.header_mutation
                         typed_config:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                          mutations:
+                            request_mutations:
+                              - remove: "x-jwt-payload"
+                              - remove: {{ default "x-auth-principal" .Values.authServer.oidc.headers.authPrincipal | quote }}
                       {{- $hasIssuers := (or .Values.envoy.oidc.issuers .Values.envoy.oidc.github.enabled) }}
                       {{- if $hasIssuers }}
                       # 2. JWT Authentication - one provider per configured issuer
@@ -135,11 +172,6 @@ data:
                               {{- end }}
                               forward: true
                               forward_payload_header: 'x-jwt-payload'
-                              claim_to_headers:
-                                - header_name: x-user-id
-                                  claim_name: sub
-                                - header_name: x-user-issuer
-                                  claim_name: iss
                             {{- end }}
                             {{- end }}
                             {{- if .Values.envoy.oidc.github.enabled }}
@@ -163,11 +195,6 @@ data:
                               {{- end }}
                               forward: true
                               forward_payload_header: 'x-jwt-payload'
-                              claim_to_headers:
-                                - header_name: x-user-id
-                                  claim_name: sub
-                                - header_name: x-user-issuer
-                                  claim_name: iss
                             {{- end }}
                           rules:
                             # Public paths: no JWT required — must come before the catch-all
@@ -201,6 +228,8 @@ data:
                               cluster_name: ext_authz
                             timeout: 5s
                           failure_mode_allow: false
+                          include_peer_certificate: true
+                          include_tls_session: true
                       # Router filter (must be last)
                       - name: envoy.filters.http.router
                         typed_config:

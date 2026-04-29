@@ -2,19 +2,20 @@
 # Allows mock user for /api/* paths.
 
 claims:
-  userID: "email"
-  emailPath: "email"
+  principalClaim: "email"
+  emailClaimPath: "email"
+
+headers:
+  authPrincipal: "x-auth-principal"
 
 issuers:
-  - provider: "https://dex.example.com"
-    principalType: "user"
+  - providerKey: "dex"
+    provider: "https://dex.example.com"
+    authFamily: "oidc"
+  - provider: "https://spire-oidc.example.org"
+    authFamily: "spiffe"
 
-principalType:
-  mode: "user"
-  machineIdentityClaim: ""
-  machineSubPattern: ""
-
-userDenyList: []
+denyList: []
 
 publicPaths:
   - "/healthz"
@@ -22,5 +23,9 @@ publicPaths:
 roles:
   admin:
     allowedMethods: ["*"]
-    users:
-      - "user:https://dex.example.com:admin@example.com"
+    principals:
+      - "oidc:dex:admin@example.com"
+  spiffe-admin:
+    allowedMethods: ["*"]
+    principals:
+      - "spiffe:*"

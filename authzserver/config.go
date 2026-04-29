@@ -5,46 +5,43 @@ package authzserver
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
+
+	"github.com/agntcy/oidc-gateway/identity"
+	"golang.org/x/net/http/httpguts"
 )
 
 // GitHub OIDC issuer URL.
 const GitHubIssuer = "https://token.actions.githubusercontent.com"
 
-// Principal type constants for validation.
-const (
-	PrincipalTypeAuto   = "auto"
-	PrincipalTypeUser   = "user"
-	PrincipalTypeClient = "client"
-	PrincipalTypeGitHub = "github"
-)
-
 // OIDCConfig holds the OIDC-based authorization configuration.
 // Roles come only from config; no roles are extracted from JWT claims.
 type OIDCConfig struct {
-	Claims        ClaimsConfig        `yaml:"claims"`
-	Issuers       []IssuerConfig      `yaml:"issuers"`
-	PrincipalType PrincipalTypeConfig `yaml:"principalType"`
-	UserDenyList  []string            `yaml:"userDenyList"`
-	PublicPaths   []string            `yaml:"publicPaths"`
-	Roles         map[string]OIDCRole `yaml:"roles"`
+	Claims      ClaimsConfig        `yaml:"claims"`
+	Headers     HeadersConfig       `yaml:"headers"`
+	Issuers     []IssuerConfig      `yaml:"issuers"`
+	DenyList    []string            `yaml:"denyList"`
+	PublicPaths []string            `yaml:"publicPaths"`
+	Roles       map[string]OIDCRole `yaml:"roles"`
 }
 
 // ClaimsConfig defines which JWT claims to read.
 type ClaimsConfig struct {
-	UserID    string `yaml:"userID"`    // e.g. "sub"
-	EmailPath string `yaml:"emailPath"` // optional; for userDenyList
+	PrincipalClaim string `yaml:"principalClaim"` // e.g. "sub"
+	EmailClaimPath string `yaml:"emailClaimPath"` // optional; for deny-list email matching
 }
 
-// IssuerConfig defines issuer-specific principal extraction.
+// HeadersConfig defines headers emitted by the authorization server.
+type HeadersConfig struct {
+	AuthPrincipal string `yaml:"authPrincipal"`
+}
+
+// IssuerConfig defines issuer mapping for canonical principal extraction.
 // Provider is the OIDC issuer URL (e.g. https://dex.example.com).
-// Allowed principalType: "auto" | "user" | "client" | "github".
 type IssuerConfig struct {
-	Provider             string `yaml:"provider"`
-	PrincipalType        string `yaml:"principalType"`
-	MachineIdentityClaim string `yaml:"machineIdentityClaim"` // e.g. "client_id"
-	MachineSubPattern    string `yaml:"machineSubPattern"`    // optional regex for auto mode
+	ProviderKey string `yaml:"providerKey"`
+	Provider    string `yaml:"provider"`
+	AuthFamily  string `yaml:"authFamily"`
 }
 
 // GetIssuerConfig returns the IssuerConfig for the given issuer URL, or nil if not found.
@@ -58,23 +55,11 @@ func (c *OIDCConfig) GetIssuerConfig(issuerURL string) *IssuerConfig {
 	return nil
 }
 
-// PrincipalTypeConfig is the fallback when issuer is not in Issuers.
-// Allowed mode: "auto" | "user" | "client".
-type PrincipalTypeConfig struct {
-	Mode                 string `yaml:"mode"`
-	MachineIdentityClaim string `yaml:"machineIdentityClaim"`
-	MachineSubPattern    string `yaml:"machineSubPattern"` // optional regex
-}
-
 // OIDCRole defines permissions and principal assignments.
-// Principals use user:{iss}:{sub}, client:{iss}:{client_id}, or ghwf:...
+// Principals use canonical format: <auth-family>:<canonical-principal>.
 type OIDCRole struct {
 	AllowedMethods []string `yaml:"allowedMethods"`
-	Users          []string `yaml:"users"`
-	Clients        []string `yaml:"clients"`
-	// GitHubWorkflows supports exact principals and optional '*' wildcard
-	// for ghwf principals only (e.g. ...:ref:refs/heads/*).
-	GitHubWorkflows []string `yaml:"githubWorkflows"`
+	Principals     []string `yaml:"principals"`
 }
 
 // Validate validates the OIDC config and returns an error if invalid.
@@ -83,11 +68,11 @@ func (c *OIDCConfig) Validate() error {
 		return err
 	}
 
-	if err := c.validatePrincipalType(); err != nil {
+	if err := c.validateIssuers(); err != nil {
 		return err
 	}
 
-	if err := c.validateIssuers(); err != nil {
+	if err := c.validateHeaders(); err != nil {
 		return err
 	}
 
@@ -96,38 +81,40 @@ func (c *OIDCConfig) Validate() error {
 	}
 
 	c.normalizePublicPaths()
+	c.normalizeHeaders()
 
 	return nil
 }
 
 func (c *OIDCConfig) validateClaims() error {
-	if c.Claims.UserID == "" {
-		return fmt.Errorf("claims.userID is required")
+	if c.Claims.PrincipalClaim == "" {
+		return fmt.Errorf("claims.principalClaim is required")
 	}
 
 	return nil
 }
 
-var allowedFallbackModes = map[string]bool{
-	PrincipalTypeAuto: true, PrincipalTypeUser: true, PrincipalTypeClient: true,
-}
-
-var allowedIssuerTypes = map[string]bool{
-	PrincipalTypeAuto: true, PrincipalTypeUser: true, PrincipalTypeClient: true, PrincipalTypeGitHub: true,
-}
-
-func (c *OIDCConfig) validatePrincipalType() error {
-	if c.PrincipalType.Mode != "" && !allowedFallbackModes[c.PrincipalType.Mode] {
-		return fmt.Errorf("principalType.mode must be one of [auto, user, client], got %q", c.PrincipalType.Mode)
+func (c *OIDCConfig) validateHeaders() error {
+	header := c.Headers.AuthPrincipal
+	if header == "" {
+		return nil
 	}
 
-	if c.PrincipalType.MachineSubPattern != "" {
-		if _, err := regexp.Compile(c.PrincipalType.MachineSubPattern); err != nil {
-			return fmt.Errorf("principalType.machineSubPattern is not a valid regex: %w", err)
-		}
+	if strings.TrimSpace(header) != header {
+		return fmt.Errorf("headers.authPrincipal must not contain leading or trailing whitespace")
+	}
+
+	if !httpguts.ValidHeaderFieldName(header) {
+		return fmt.Errorf("headers.authPrincipal %q is not a valid HTTP header name", header)
 	}
 
 	return nil
+}
+
+var allowedIssuerAuthFamilies = map[string]bool{
+	"":                                true,
+	string(identity.AuthFamilyOIDC):   true,
+	string(identity.AuthFamilySPIFFE): true,
 }
 
 func (c *OIDCConfig) validateIssuers() error {
@@ -136,14 +123,16 @@ func (c *OIDCConfig) validateIssuers() error {
 			return fmt.Errorf("issuers[%d].provider is required", i)
 		}
 
-		if ic.PrincipalType != "" && !allowedIssuerTypes[ic.PrincipalType] {
-			return fmt.Errorf("issuers[%q].principalType must be one of [auto, user, client, github], got %q", ic.Provider, ic.PrincipalType)
+		if !allowedIssuerAuthFamilies[ic.AuthFamily] {
+			return fmt.Errorf(
+				"issuers[%q].authFamily must be one of [oidc, spiffe], got %q",
+				ic.Provider,
+				ic.AuthFamily,
+			)
 		}
 
-		if ic.MachineSubPattern != "" {
-			if _, err := regexp.Compile(ic.MachineSubPattern); err != nil {
-				return fmt.Errorf("issuers[%q].machineSubPattern is not a valid regex: %w", ic.Provider, err)
-			}
+		if ic.AuthFamily != string(identity.AuthFamilySPIFFE) && ic.ProviderKey == "" {
+			return fmt.Errorf("issuers[%q].providerKey is required for oidc auth family", ic.Provider)
 		}
 	}
 
@@ -160,12 +149,17 @@ func (c *OIDCConfig) validateRoles() error {
 			return fmt.Errorf("role %q has no allowedMethods", roleName)
 		}
 
-		for _, workflowPrincipal := range role.GitHubWorkflows {
-			if strings.Contains(workflowPrincipal, "*") && !isSupportedGitHubWorkflowWildcard(workflowPrincipal) {
+		for _, principal := range role.Principals {
+			if strings.TrimSpace(principal) == "" {
+				return fmt.Errorf("role %q contains an empty principal", roleName)
+			}
+
+			if strings.HasPrefix(principal, "oidc:github:") && strings.Contains(principal, "*") &&
+				!isSupportedGitHubWorkflowWildcard(principal) {
 				return fmt.Errorf(
-					"role %q has invalid githubWorkflows wildcard %q: only one '*' is supported, it must be at the end, and only in ghwf ...:ref:refs/heads/<branch>*",
+					"role %q has invalid github workflow wildcard principal %q: only one '*' is supported, it must be at the end, and only in oidc:github:repo:...:workflow:...:ref:refs/heads/<branch>*",
 					roleName,
-					workflowPrincipal,
+					principal,
 				)
 			}
 		}
@@ -174,15 +168,23 @@ func (c *OIDCConfig) validateRoles() error {
 	return nil
 }
 
-// isSupportedGitHubWorkflowWildcard enforces a constrained wildcard format:
-// - principal must start with ghwf:repo:
+// isSupportedGitHubWorkflowWildcard enforces strict wildcard semantics for GitHub workflow principals:
+// - principal must start with oidc:github:repo:
+// - include :workflow: and :ref:refs/heads/
 // - exactly one '*' is allowed
 // - '*' must be the final character
 // - wildcard must be inside :ref:refs/heads/<branch>* segment.
 func isSupportedGitHubWorkflowWildcard(principal string) bool {
-	const branchRefPrefix = ":ref:refs/heads/"
+	const (
+		workflowMarker  = ":workflow:"
+		branchRefPrefix = ":ref:refs/heads/"
+	)
 
-	if !strings.HasPrefix(principal, "ghwf:repo:") {
+	if !strings.HasPrefix(principal, "oidc:github:repo:") {
+		return false
+	}
+
+	if !strings.Contains(principal, workflowMarker) {
 		return false
 	}
 
@@ -200,20 +202,31 @@ func isSupportedGitHubWorkflowWildcard(principal string) bool {
 	}
 
 	starPos := len(principal) - 1
+
 	minBranchStart := refIdx + len(branchRefPrefix)
 
-	// The wildcard must be in the branch segment.
-	if starPos < minBranchStart {
-		return false
-	}
-
-	return true
+	return starPos >= minBranchStart
 }
 
 func (c *OIDCConfig) normalizePublicPaths() {
 	if c.PublicPaths == nil {
 		c.PublicPaths = []string{}
 	}
+}
+
+func (c *OIDCConfig) normalizeHeaders() {
+	if c.Headers.AuthPrincipal == "" {
+		c.Headers.AuthPrincipal = HeaderAuthPrincipal
+	}
+}
+
+// AuthPrincipalHeader returns the configured upstream identity header name.
+func (c *OIDCConfig) AuthPrincipalHeader() string {
+	if c == nil || c.Headers.AuthPrincipal == "" {
+		return HeaderAuthPrincipal
+	}
+
+	return c.Headers.AuthPrincipal
 }
 
 // IsPublicPath returns true if the path is in publicPaths.

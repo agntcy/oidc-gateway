@@ -48,6 +48,7 @@ services:
       - "8888:8888"
     environment:
       LISTEN_ADDRESS: ":8888"
+      AUTH_PRINCIPAL_HEADER: "X-Auth-Principal"
     networks:
       - authz-test
 

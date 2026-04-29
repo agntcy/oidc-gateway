@@ -23,6 +23,7 @@ import (
 const (
 	// Default listen address for the mock server.
 	defaultListenAddr = ":8888"
+	defaultAuthHeader = "X-Auth-Principal"
 
 	// HTTP server timeouts.
 	serverReadHeaderTimeout = 10 * time.Second
@@ -90,10 +91,13 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// OIDC ext-authz sets these headers on allow (canonical principal from Casbin)
-	authorizedPrincipal := r.Header.Get("X-Authorized-Principal")
-	userID := r.Header.Get("X-User-Id")
-	principalType := r.Header.Get("X-Principal-Type")
+	// ext-authz sets this canonical identity header on allow.
+	authHeader := os.Getenv("AUTH_PRINCIPAL_HEADER")
+	if authHeader == "" {
+		authHeader = defaultAuthHeader
+	}
+
+	authPrincipal := r.Header.Get(authHeader)
 
 	// Echo back the request info
 	response := map[string]any{
@@ -101,17 +105,15 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		"path":    r.URL.Path,
 		"method":  r.Method,
 		"authenticated": map[string]string{
-			"authorized_principal": authorizedPrincipal,
-			"user_id":              userID,
-			"principal_type":       principalType,
+			"auth_principal": authPrincipal,
 		},
 		"note": "This is a mock server for testing OIDC ext_authz integration",
 	}
 
 	// Pretty print for logs
-	if authorizedPrincipal != "" {
+	if authPrincipal != "" {
 		//nolint:gosec // G110: Mock server - logs authenticated principal for debugging
-		log.Printf("✅ Authenticated: %s (type: %s)", authorizedPrincipal, principalType)
+		log.Printf("✅ Authenticated: %s", authPrincipal)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
