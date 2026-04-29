@@ -3,7 +3,7 @@ module github.com/agntcy/oidc-gateway/authzserver
 go 1.26.2
 
 require (
-	github.com/agntcy/oidc-gateway/identity v0.0.0
+	github.com/agntcy/oidc-gateway/identity v1.0.0
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	golang.org/x/net v0.53.0

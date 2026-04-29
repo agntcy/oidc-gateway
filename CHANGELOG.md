@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.0.0] - 2026-04-29
+
+### Added
+- **Authz**: Support unified authorization for OIDC JWT, SPIFFE JWT-SVID, and SPIFFE X.509-SVID identities.
+- **Identity**: Add lightweight `github.com/agntcy/oidc-gateway/identity` module for canonical principal parsing and formatting.
+- **Gateway**: Forward a configurable canonical principal header, defaulting to `x-auth-principal`, to upstream services.
+- **Helm**: Add configuration for SPIFFE downstream mTLS, principal header forwarding, and principal-based authorization rules.
+- **CI**: Add Codecov configuration, coverage upload workflow, and coverage badge.
+
+### Changed
+- **Authz**: Prefer verified SPIFFE X.509-SVID identity when present, then fall back to verified bearer JWT payloads.
+- **Config**: Replace user/client/workflow-specific role fields with canonical `principals` and principal-centric claim/deny-list names.
+- **RBAC**: Enable wildcard matching for canonical principal assignments and enforce strict GitHub workflow wildcard semantics.
+- **Docs**: Expand README and testing documentation for local development, Helm deployment, principal formats, and header trust boundaries.
+
+### Fixed
+- **Testing**: Align local Envoy integration tests with `x-jwt-payload` and configurable principal header handling.
+
 ## [v0.1.1] - 2026-04-21
 
 ### Changed
@@ -22,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Helm**: Correct `jwt_authn` rule ordering, default image tag, and SPIRE workload class (#10)
 - **Helm**: Address deep review items for reflection, TLS validation, and public paths (#10)
+
+---
+
+[Full Changelog](https://github.com/agntcy/oidc-gateway/compare/v0.1.1...v1.0.0)
 
 ---
 
