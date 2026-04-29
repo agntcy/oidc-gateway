@@ -33,6 +33,38 @@ func TestOIDCConfig_Validate(t *testing.T) {
 	}{
 		{name: "valid config", config: validConfig(), expectError: false},
 		{
+			name: "valid custom auth principal header",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.Headers.AuthPrincipal = "x-custom-principal"
+
+				return cfg
+			}(),
+			expectError: false,
+		},
+		{
+			name: "invalid auth principal header with colon",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.Headers.AuthPrincipal = "x-custom:principal"
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "headers.authPrincipal",
+		},
+		{
+			name: "invalid auth principal header with whitespace",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.Headers.AuthPrincipal = " x-custom-principal"
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "whitespace",
+		},
+		{
 			name: "missing claims.principalClaim",
 			config: &OIDCConfig{
 				Claims: ClaimsConfig{PrincipalClaim: ""},
@@ -160,6 +192,10 @@ func TestOIDCConfig_Validate(t *testing.T) {
 
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
+			}
+
+			if tt.config.Headers.AuthPrincipal == "" {
+				t.Fatal("expected auth principal header to be defaulted")
 			}
 		})
 	}

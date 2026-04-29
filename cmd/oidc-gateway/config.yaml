@@ -6,6 +6,9 @@ claims:
   principalClaim: "sub"
   emailClaimPath: "email"
 
+headers:
+  authPrincipal: "x-auth-principal"
+
 # Issuer mapping for canonical principal extraction.
 # authFamily: oidc | spiffe
 # Example:

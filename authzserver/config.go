@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/agntcy/oidc-gateway/identity"
+	"golang.org/x/net/http/httpguts"
 )
 
 // GitHub OIDC issuer URL.
@@ -17,6 +18,7 @@ const GitHubIssuer = "https://token.actions.githubusercontent.com"
 // Roles come only from config; no roles are extracted from JWT claims.
 type OIDCConfig struct {
 	Claims      ClaimsConfig        `yaml:"claims"`
+	Headers     HeadersConfig       `yaml:"headers"`
 	Issuers     []IssuerConfig      `yaml:"issuers"`
 	DenyList    []string            `yaml:"denyList"`
 	PublicPaths []string            `yaml:"publicPaths"`
@@ -27,6 +29,11 @@ type OIDCConfig struct {
 type ClaimsConfig struct {
 	PrincipalClaim string `yaml:"principalClaim"` // e.g. "sub"
 	EmailClaimPath string `yaml:"emailClaimPath"` // optional; for deny-list email matching
+}
+
+// HeadersConfig defines headers emitted by the authorization server.
+type HeadersConfig struct {
+	AuthPrincipal string `yaml:"authPrincipal"`
 }
 
 // IssuerConfig defines issuer mapping for canonical principal extraction.
@@ -65,11 +72,16 @@ func (c *OIDCConfig) Validate() error {
 		return err
 	}
 
+	if err := c.validateHeaders(); err != nil {
+		return err
+	}
+
 	if err := c.validateRoles(); err != nil {
 		return err
 	}
 
 	c.normalizePublicPaths()
+	c.normalizeHeaders()
 
 	return nil
 }
@@ -77,6 +89,23 @@ func (c *OIDCConfig) Validate() error {
 func (c *OIDCConfig) validateClaims() error {
 	if c.Claims.PrincipalClaim == "" {
 		return fmt.Errorf("claims.principalClaim is required")
+	}
+
+	return nil
+}
+
+func (c *OIDCConfig) validateHeaders() error {
+	header := c.Headers.AuthPrincipal
+	if header == "" {
+		return nil
+	}
+
+	if strings.TrimSpace(header) != header {
+		return fmt.Errorf("headers.authPrincipal must not contain leading or trailing whitespace")
+	}
+
+	if !httpguts.ValidHeaderFieldName(header) {
+		return fmt.Errorf("headers.authPrincipal %q is not a valid HTTP header name", header)
 	}
 
 	return nil
@@ -183,6 +212,21 @@ func (c *OIDCConfig) normalizePublicPaths() {
 	if c.PublicPaths == nil {
 		c.PublicPaths = []string{}
 	}
+}
+
+func (c *OIDCConfig) normalizeHeaders() {
+	if c.Headers.AuthPrincipal == "" {
+		c.Headers.AuthPrincipal = HeaderAuthPrincipal
+	}
+}
+
+// AuthPrincipalHeader returns the configured upstream identity header name.
+func (c *OIDCConfig) AuthPrincipalHeader() string {
+	if c == nil || c.Headers.AuthPrincipal == "" {
+		return HeaderAuthPrincipal
+	}
+
+	return c.Headers.AuthPrincipal
 }
 
 // IsPublicPath returns true if the path is in publicPaths.

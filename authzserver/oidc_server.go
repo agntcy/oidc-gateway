@@ -138,7 +138,7 @@ func (s *OIDCAuthorizationServer) allowResponse(principal string) *authv3.CheckR
 
 	if principal != "" {
 		headers = append(headers, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: HeaderAuthPrincipal, Value: principal},
+			Header: &corev3.HeaderValue{Key: s.config.AuthPrincipalHeader(), Value: principal},
 			Append: wrapperspb.Bool(false), // overwrite any client-supplied value
 		})
 	}

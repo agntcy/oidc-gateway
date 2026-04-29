@@ -52,7 +52,7 @@ envoy:
 
     # GitHub Actions OIDC issuer (special case).
     # The authzserver has dedicated principal extraction for GitHub OIDC tokens,
-    # producing ghwf:repo:... principals for use in RBAC roles.
+    # producing oidc:github:repo:... principals for use in RBAC roles.
     github:
       enabled: false
       issuer: "https://token.actions.githubusercontent.com"
@@ -118,6 +118,10 @@ authServer:
     claims:
       principalClaim: "sub"
       emailClaimPath: "email"
+
+    # Header emitted by ext_authz and stripped from client requests by Envoy.
+    headers:
+      authPrincipal: "x-auth-principal"
 
     # Issuer mapping for canonical principal extraction.
     # authFamily: oidc | spiffe

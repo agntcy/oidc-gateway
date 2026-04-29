@@ -191,6 +191,32 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 		}
 	})
 
+	t.Run("authorized request uses configured auth principal header", func(t *testing.T) {
+		cfg := validOIDCConfig()
+		cfg.Headers.AuthPrincipal = "x-custom-auth-principal"
+
+		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", map[string]string{HeaderJWTPayload: testPayloadAdmin})
+
+		resp, err := srv2.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		headers := resp.GetOkResponse().GetHeaders()
+		if len(headers) != 1 {
+			t.Fatalf("expected exactly 1 header, got %d", len(headers))
+		}
+
+		if headers[0].GetHeader().GetKey() != "x-custom-auth-principal" {
+			t.Fatalf("expected custom header, got %s", headers[0].GetHeader().GetKey())
+		}
+	})
+
 	t.Run("unauthorized path returns 403", func(t *testing.T) {
 		cfg := validOIDCConfig()
 		cfg.Roles = map[string]OIDCRole{

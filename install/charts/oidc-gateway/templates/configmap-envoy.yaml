@@ -142,7 +142,7 @@ data:
                           mutations:
                             request_mutations:
                               - remove: "x-jwt-payload"
-                              - remove: "x-auth-principal"
+                              - remove: {{ default "x-auth-principal" .Values.authServer.oidc.headers.authPrincipal | quote }}
                       {{- $hasIssuers := (or .Values.envoy.oidc.issuers .Values.envoy.oidc.github.enabled) }}
                       {{- if $hasIssuers }}
                       # 2. JWT Authentication - one provider per configured issuer

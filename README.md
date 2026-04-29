@@ -31,7 +31,8 @@ format.
   `spiffe:spiffe://example.org/ns/default/sa/backend`.
 - Authorizes those principals against YAML-defined roles and allowed HTTP or
   gRPC paths.
-- Sends upstream services exactly one identity header: `x-auth-principal`.
+- Sends upstream services exactly one configured identity header, defaulting to
+  `x-auth-principal`.
 
 ## Request Flow
 
@@ -43,7 +44,7 @@ client
 Envoy
   |  validates bearer JWTs with jwt_authn
   |  validates downstream mTLS when SPIFFE X.509-SVID is enabled
-  |  strips client-supplied x-jwt-payload and x-auth-principal
+  |  strips client-supplied x-jwt-payload and configured principal header
   v
 oidc-gateway ext_authz server
   |  prefers X.509 identity, otherwise reads verified x-jwt-payload
@@ -52,7 +53,7 @@ oidc-gateway ext_authz server
   v
 backend service
   |
-  |  receives x-auth-principal only when authorization succeeds
+  |  receives configured principal header only when authorization succeeds
 ```
 
 For non-public paths, the precedence is:
@@ -109,15 +110,15 @@ oidc:github:repo:org/repo:workflow:deploy.yml:ref:refs/heads/release-*
 
 ## Backend Header Contract
 
-Backends should consume only:
+Backends should consume only the configured principal header. By default this is:
 
 ```http
 x-auth-principal: <auth-family>:<canonical-principal>
 ```
 
 Clients must not set this header themselves. Envoy strips client-supplied
-`x-auth-principal`, and the ext_authz server sets it only after successful
-authentication and authorization.
+principal headers, and the ext_authz server sets the configured header only
+after successful authentication and authorization.
 
 `x-jwt-payload` is an internal Envoy-to-ext_authz header. In production, Envoy
 sets it after `jwt_authn` validates a bearer JWT. It is not a client API.
@@ -131,6 +132,9 @@ The ext_authz server loads YAML from `CONFIG_PATH`, defaulting to
 claims:
   principalClaim: "sub"
   emailClaimPath: "email"
+
+headers:
+  authPrincipal: "x-auth-principal"
 
 issuers:
   - providerKey: "dex"
@@ -166,6 +170,9 @@ Important fields:
 
 - `claims.principalClaim`: JWT claim used as the default OIDC principal value.
 - `claims.emailClaimPath`: optional claim path used for email deny-list matching.
+- `headers.authPrincipal`: upstream identity header emitted by ext_authz.
+  Defaults to `x-auth-principal`; configure the same value in Envoy stripping
+  rules so clients cannot spoof it.
 - `issuers[].provider`: issuer URL found in the JWT `iss` claim.
 - `issuers[].providerKey`: stable alias used in `oidc:<providerKey>:...`
   principals. It is required for OIDC issuers.
@@ -206,7 +213,7 @@ The most important values to set are:
 - `envoy.spiffe.downstream.requireClientCertificate`: controls whether bearer-only
   clients are still allowed.
 - `authServer.oidc`: renders the authorization config consumed by the ext_authz
-  server.
+  server, including the principal header name Envoy strips from client requests.
 
 Minimal values example:
 
@@ -231,6 +238,8 @@ envoy:
 
 authServer:
   oidc:
+    headers:
+      authPrincipal: "x-auth-principal"
     issuers:
       - providerKey: "dex"
         provider: "https://dex.example.com"
@@ -323,7 +332,7 @@ The script checks:
 - rejection of invalid JWT payloads
 - successful OIDC principal extraction
 - successful SPIFFE JWT-SVID principal extraction
-- canonical `x-auth-principal` forwarding to the mock backend
+- canonical principal header forwarding to the mock backend
 - best-effort XFCC simulation for local X.509-SVID behavior
 
 The local test setup passes `x-jwt-payload` directly for convenience. Production
@@ -357,8 +366,9 @@ The authorization server reads:
 
 ## Security Notes
 
-- Do not trust client-supplied `x-auth-principal` or `x-jwt-payload` headers.
-  Envoy configuration should strip both before authentication processing.
+- Do not trust client-supplied principal headers or `x-jwt-payload` headers.
+  Envoy configuration should strip both before authentication processing. The
+  default principal header is `x-auth-principal`.
 - Keep `failure_mode_allow` disabled for `ext_authz` so authorization service
   failures deny protected traffic.
 - Prefer workload identity and short-lived tokens over long-lived credentials.

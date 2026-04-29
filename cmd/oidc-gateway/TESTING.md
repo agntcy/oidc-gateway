@@ -20,7 +20,7 @@ docker-compose up --build
 4. ✅ Request with valid OIDC payload → 200
 5. ✅ Request with SPIFFE JWT-SVID payload → 200
 6. ⚠ XFCC SPIFFE simulation is best-effort in local non-mTLS setup
-7. ✅ Canonical identity header forwarded (`x-auth-principal`)
+7. ✅ Configured canonical identity header forwarded (`x-auth-principal` by default)
 
 ## Services
 
@@ -49,12 +49,16 @@ curl http://localhost:9901/stats | grep ext_authz
 The test uses `test/config.test.yaml` mounted at `/etc/oidc-gateway/config.yaml`. It allows:
 
 - **Public path**: `/healthz` (no auth)
+- **Principal header**: `x-auth-principal`
 - **Admin principal**: `oidc:dex:admin@example.com` (all methods)
 - **SPIFFE principal**: `spiffe:*` (all methods)
 
 To test deny list or different roles, edit `test/config.test.yaml` and restart:
 
 ```yaml
+headers:
+  authPrincipal: "x-auth-principal"
+
 denyList:
   - "oidc:dex:blocked@example.com"
 

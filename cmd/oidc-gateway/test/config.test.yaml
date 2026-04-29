@@ -5,6 +5,9 @@ claims:
   principalClaim: "email"
   emailClaimPath: "email"
 
+headers:
+  authPrincipal: "x-auth-principal"
+
 issuers:
   - providerKey: "dex"
     provider: "https://dex.example.com"

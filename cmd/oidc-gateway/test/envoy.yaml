@@ -90,7 +90,8 @@ static_resources:
 
                 http_filters:
                   # 1. Header Mutation
-                  # Always strip client-supplied x-auth-principal to prevent identity spoofing.
+                  # Always strip client-supplied principal header to prevent identity spoofing.
+                  # This static local config uses the default authz header: x-auth-principal.
                   # Keep x-jwt-payload only for /api/test dev passthrough (authn input to ext_authz).
                   # /api/jwt has additional per-route stripping for client-supplied x-jwt-payload.
                   - name: envoy.filters.http.header_mutation

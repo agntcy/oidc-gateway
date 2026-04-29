@@ -23,6 +23,7 @@ import (
 const (
 	// Default listen address for the mock server.
 	defaultListenAddr = ":8888"
+	defaultAuthHeader = "X-Auth-Principal"
 
 	// HTTP server timeouts.
 	serverReadHeaderTimeout = 10 * time.Second
@@ -91,7 +92,12 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ext-authz sets this canonical identity header on allow.
-	authPrincipal := r.Header.Get("X-Auth-Principal")
+	authHeader := os.Getenv("AUTH_PRINCIPAL_HEADER")
+	if authHeader == "" {
+		authHeader = defaultAuthHeader
+	}
+
+	authPrincipal := r.Header.Get(authHeader)
 
 	// Echo back the request info
 	response := map[string]any{
