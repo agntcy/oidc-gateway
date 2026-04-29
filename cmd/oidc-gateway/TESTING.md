@@ -77,6 +77,10 @@ Bearer JWTs and sets `x-jwt-payload` before ext_authz. This test setup passes
 `test.sh` uses `x-forwarded-client-cert` simulation, which may be rejected unless
 downstream mTLS and trusted cert handling are configured.
 
+The Helm chart can expose separate OIDC/JWT and mTLS endpoints from one Envoy
+deployment. This Docker Compose setup only exercises the single local listener
+and XFCC simulation; it does not configure real downstream SPIFFE mTLS.
+
 ## Cleanup
 
 ```bash

@@ -16,10 +16,18 @@ metadata:
 spec:
   type: {{ .Values.envoy.service.type }}
   ports:
-  - port: {{ .Values.envoy.service.port }}
-    targetPort: http
+  {{- if .Values.envoy.endpoints.oidc.enabled }}
+  - port: {{ .Values.envoy.endpoints.oidc.servicePort }}
+    targetPort: oidc
     protocol: TCP
-    name: http
+    name: oidc
+  {{- end }}
+  {{- if .Values.envoy.endpoints.mtls.enabled }}
+  - port: {{ default 8443 .Values.envoy.endpoints.mtls.servicePort }}
+    targetPort: mtls
+    protocol: TCP
+    name: mtls
+  {{- end }}
   {{- if .Values.envoy.admin.enabled }}
   - port: {{ .Values.envoy.admin.port }}
     targetPort: admin

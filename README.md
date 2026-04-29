@@ -188,8 +188,9 @@ Important fields:
 
 The Helm chart deploys two main workloads:
 
-- Envoy, exposed on `envoy.service.port` and configured with `jwt_authn`,
-  `ext_authz`, optional SPIFFE downstream mTLS, and optional SPIFFE upstream mTLS.
+- Envoy, exposed through one or more configured `envoy.endpoints`, and configured
+  with `jwt_authn`, `ext_authz`, optional SPIFFE downstream mTLS, and optional
+  SPIFFE upstream mTLS.
 - The `oidc-gateway` authorization server, exposed internally on
   `authServer.service.port`.
 
@@ -204,21 +205,28 @@ helm install oidc-gateway oci://ghcr.io/agntcy/oidc-gateway/helm-charts/oidc-gat
 The most important values to set are:
 
 - `envoy.backend.address` and `envoy.backend.port`: upstream backend service.
+- `envoy.endpoints.oidc`: OIDC/JWT listener and service port.
+- `envoy.endpoints.mtls`: optional SPIFFE X.509-SVID listener and service port.
 - `envoy.oidc.issuers`: generic OIDC or SPIFFE JWT-SVID issuers for Envoy
   `jwt_authn`.
 - `envoy.oidc.github`: optional GitHub Actions OIDC provider shortcut.
 - `envoy.spiffe.enabled`: enables SPIFFE SDS and upstream mTLS to the backend.
-- `envoy.spiffe.downstream.enabled`: enables downstream TLS listener support for
-  SPIFFE X.509-SVID client certificates.
-- `envoy.spiffe.downstream.requireClientCertificate`: controls whether bearer-only
-  clients are still allowed.
+- `ingress.oidc`: optional OIDC/JWT ingress, normally with gRPC TLS termination.
+- `ingress.mtls`: optional SPIFFE X.509-SVID ingress, normally with TLS passthrough.
 - `authServer.oidc`: renders the authorization config consumed by the ext_authz
   server, including the principal header name Envoy strips from client requests.
 
-Minimal values example:
+Minimal OIDC/JWT endpoint example:
 
 ```yaml
 envoy:
+  endpoints:
+    oidc:
+      enabled: true
+      port: 8080
+      servicePort: 8080
+    mtls:
+      enabled: false
   backend:
     address: "directory.default.svc.cluster.local"
     port: 8888
@@ -232,9 +240,6 @@ envoy:
   spiffe:
     enabled: true
     trustDomain: example.org
-    downstream:
-      enabled: true
-      requireClientCertificate: false
 
 authServer:
   oidc:
@@ -249,6 +254,50 @@ authServer:
         allowedMethods: ["*"]
         principals:
           - "oidc:dex:admin@example.com"
+```
+
+Dual endpoint example:
+
+```yaml
+envoy:
+  endpoints:
+    oidc:
+      enabled: true
+      port: 8080
+      servicePort: 8080
+      downstreamTls:
+        enabled: false
+    mtls:
+      enabled: true
+      port: 8443
+      servicePort: 8443
+      downstreamTls:
+        enabled: true
+        requireClientCertificate: true
+  spiffe:
+    enabled: true
+    trustDomain: example.org
+
+ingress:
+  oidc:
+    enabled: true
+    host: gateway.example.com
+    annotations:
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+  mtls:
+    enabled: true
+    host: mtls-gateway.example.com
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPCS"
+
+authServer:
+  oidc:
+    roles:
+      workloads:
+        allowedMethods: ["*"]
+        principals:
+          - "spiffe:spiffe://example.org/ns/default/sa/workload"
 ```
 
 ## Local Development
