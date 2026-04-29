@@ -3,40 +3,52 @@ Copyright AGNTCY Contributors (https://github.com/agntcy)
 SPDX-License-Identifier: Apache-2.0
 */}}
 
-{{- if .Values.ingress.enabled -}}
+{{- define "oidc-gateway.ingress" -}}
+{{- $root := .root -}}
+{{- $cfg := .config -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "oidc-gateway.fullname" . }}
+  name: {{ .name }}
   labels:
-    {{- include "oidc-gateway.envoyLabels" . | nindent 4 }}
-  {{- with .Values.ingress.annotations }}
+    {{- include "oidc-gateway.envoyLabels" $root | nindent 4 }}
+  {{- with $cfg.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- if .Values.ingress.className }}
-  ingressClassName: {{ .Values.ingress.className }}
+  {{- if $cfg.className }}
+  ingressClassName: {{ $cfg.className }}
   {{- end }}
-  {{- if .Values.ingress.tls.enabled }}
+  {{- if $cfg.tls.enabled }}
   tls:
   - hosts:
-    - {{ .Values.ingress.host }}
-    {{- if .Values.ingress.tls.secretName }}
-    secretName: {{ .Values.ingress.tls.secretName }}
-    {{- else }}
-    secretName: {{ include "oidc-gateway.fullname" . }}-tls
+    - {{ $cfg.host }}
+    {{- if $cfg.tls.secretName }}
+    secretName: {{ $cfg.tls.secretName }}
+    {{- else if .defaultSecretName }}
+    secretName: {{ include "oidc-gateway.fullname" $root }}-tls
     {{- end }}
   {{- end }}
   rules:
-  - host: {{ .Values.ingress.host }}
+  - host: {{ $cfg.host }}
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: {{ include "oidc-gateway.fullname" . }}-envoy
+            name: {{ include "oidc-gateway.fullname" $root }}-envoy
             port:
-              number: {{ .Values.envoy.service.port }}
+              number: {{ .servicePort }}
+{{- end -}}
+
+{{- $oidcServicePort := .Values.envoy.endpoints.oidc.servicePort -}}
+{{- $mtlsServicePort := default 8443 .Values.envoy.endpoints.mtls.servicePort -}}
+{{- if .Values.ingress.oidc.enabled }}
+{{ include "oidc-gateway.ingress" (dict "root" . "config" .Values.ingress.oidc "name" (printf "%s-oidc" (include "oidc-gateway.fullname" .)) "servicePort" $oidcServicePort "defaultSecretName" true) }}
+{{- end }}
+{{- if .Values.ingress.mtls.enabled }}
+---
+{{ include "oidc-gateway.ingress" (dict "root" . "config" .Values.ingress.mtls "name" (printf "%s-mtls" (include "oidc-gateway.fullname" .)) "servicePort" $mtlsServicePort "defaultSecretName" false) }}
 {{- end }}

@@ -3,6 +3,233 @@ Copyright AGNTCY Contributors (https://github.com/agntcy)
 SPDX-License-Identifier: Apache-2.0
 */}}
 
+{{- define "oidc-gateway.envoyListener" -}}
+{{- $root := .root -}}
+{{- $name := .name -}}
+{{- $port := .port -}}
+{{- $tlsEnabled := .tlsEnabled -}}
+{{- $requireClientCertificate := .requireClientCertificate -}}
+{{- $includeJwtAuth := .includeJwtAuth -}}
+{{- $hasIssuers := (or $root.Values.envoy.oidc.issuers $root.Values.envoy.oidc.github.enabled) -}}
+{{- if and $tlsEnabled (not $root.Values.envoy.spiffe.enabled) -}}
+{{- fail (printf "Envoy listener %s enables downstream TLS but envoy.spiffe.enabled is false" $name) -}}
+{{- end -}}
+- name: {{ $name }}
+  address:
+    socket_address:
+      address: 0.0.0.0
+      port_value: {{ $port }}
+  filter_chains:
+    - {{- if $tlsEnabled }}
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
+          require_client_certificate: {{ $requireClientCertificate }}
+          common_tls_context:
+            tls_certificate_sds_secret_configs:
+            - name: {{ printf "spiffe://%s/ns/%s/sa/%s" (default "example.org" $root.Values.envoy.spiffe.trustDomain) $root.Release.Namespace (include "oidc-gateway.envoyServiceAccountName" $root) | quote }}
+              sds_config:
+                api_config_source:
+                  api_type: GRPC
+                  grpc_services:
+                  - envoy_grpc:
+                      cluster_name: spiffe_agent
+            combined_validation_context:
+              default_validation_context:
+                match_typed_subject_alt_names:
+                  - san_type: URI
+                    matcher:
+                      prefix: {{ printf "spiffe://%s/" (default "example.org" $root.Values.envoy.spiffe.trustDomain) | quote }}
+              validation_context_sds_secret_config:
+                name: {{ printf "spiffe://%s" (default "example.org" $root.Values.envoy.spiffe.trustDomain) | quote }}
+                sds_config:
+                  api_config_source:
+                    api_type: GRPC
+                    grpc_services:
+                    - envoy_grpc:
+                        cluster_name: spiffe_agent
+      {{- end }}
+      filters:
+        - name: envoy.filters.network.http_connection_manager
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            stat_prefix: {{ $name }}
+            codec_type: AUTO
+            http2_protocol_options: {}
+            forward_client_cert_details: APPEND_FORWARD
+            set_current_client_cert_details:
+              uri: true
+            access_log:
+              - name: envoy.access_loggers.stdout
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
+            route_config:
+              name: {{ $name }}_route
+              virtual_hosts:
+                - name: backend
+                  domains: ["*"]
+                  routes:
+                    # Health check - no auth
+                    - match:
+                        path: "/healthz"
+                      direct_response:
+                        status: 200
+                        body:
+                          inline_string: '{"status":"healthy"}'
+                      typed_per_filter_config:
+                        envoy.filters.http.ext_authz:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                          disabled: true
+                    # Long-lived server-streaming RPC route (optional, configurable timeout)
+                    {{- if $root.Values.envoy.backend.streamingPath }}
+                    - match:
+                        path: {{ $root.Values.envoy.backend.streamingPath | quote }}
+                      route:
+                        cluster: backend
+                        timeout: {{ $root.Values.envoy.backend.listenRouteTimeout }}
+                      request_headers_to_remove:
+                        - "authorization"
+                      typed_per_filter_config:
+                        envoy.filters.http.header_mutation:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutationPerRoute
+                          mutations:
+                            request_mutations:
+                              - remove: "x-jwt-payload"
+                    {{- end }}
+                    # gRPC reflection - no JWT required, no ext_authz (public)
+                    - match:
+                        prefix: "/grpc.reflection"
+                      route:
+                        cluster: backend
+                        timeout: {{ $root.Values.envoy.backend.timeout }}
+                      request_headers_to_remove:
+                        - "authorization"
+                      typed_per_filter_config:
+                        envoy.filters.http.ext_authz:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
+                          disabled: true
+                    # Catch-all - ext_authz decides whether X.509-SVID or bearer JWT auth is present.
+                    - match:
+                        prefix: "/"
+                      route:
+                        cluster: backend
+                        timeout: {{ $root.Values.envoy.backend.timeout }}
+                      request_headers_to_remove:
+                        - "authorization"
+                      typed_per_filter_config:
+                        envoy.filters.http.header_mutation:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutationPerRoute
+                          mutations:
+                            request_mutations:
+                              - remove: "x-jwt-payload"
+            http_filters:
+              # 1. Header Mutation - strip client-supplied identity inputs (defense-in-depth)
+              - name: envoy.filters.http.header_mutation
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                  mutations:
+                    request_mutations:
+                      - remove: "x-jwt-payload"
+                      - remove: {{ default "x-auth-principal" $root.Values.authServer.oidc.headers.authPrincipal | quote }}
+              {{- if and $includeJwtAuth $hasIssuers }}
+              # 2. JWT Authentication - one provider per configured issuer
+              - name: envoy.filters.http.jwt_authn
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                  providers:
+                    {{- range $root.Values.envoy.oidc.issuers }}
+                    {{- if .enabled }}
+                    {{ .name }}:
+                      issuer: {{ .issuer | quote }}
+                      remote_jwks:
+                        http_uri:
+                          uri: {{ .jwksUri | quote }}
+                          cluster: jwks_{{ .name }}
+                          timeout: {{ $root.Values.envoy.oidc.jwksTimeout }}
+                        cache_duration:
+                          seconds: {{ $root.Values.envoy.oidc.jwksCacheSeconds }}
+                      from_headers:
+                        - name: Authorization
+                          value_prefix: 'Bearer '
+                      {{- if .audiences }}
+                      audiences:
+                        {{- range .audiences }}
+                        - {{ . | quote }}
+                        {{- end }}
+                      {{- end }}
+                      forward: true
+                      forward_payload_header: 'x-jwt-payload'
+                    {{- end }}
+                    {{- end }}
+                    {{- if $root.Values.envoy.oidc.github.enabled }}
+                    github:
+                      issuer: {{ $root.Values.envoy.oidc.github.issuer | quote }}
+                      remote_jwks:
+                        http_uri:
+                          uri: {{ $root.Values.envoy.oidc.github.jwksUri | quote }}
+                          cluster: jwks_github
+                          timeout: {{ $root.Values.envoy.oidc.jwksTimeout }}
+                        cache_duration:
+                          seconds: {{ $root.Values.envoy.oidc.jwksCacheSeconds }}
+                      from_headers:
+                        - name: Authorization
+                          value_prefix: 'Bearer '
+                      {{- if $root.Values.envoy.oidc.github.audiences }}
+                      audiences:
+                        {{- range $root.Values.envoy.oidc.github.audiences }}
+                        - {{ . | quote }}
+                        {{- end }}
+                      {{- end }}
+                      forward: true
+                      forward_payload_header: 'x-jwt-payload'
+                    {{- end }}
+                  rules:
+                    # Public paths: no JWT required — must come before the catch-all
+                    - match:
+                        path: "/healthz"
+                    - match:
+                        # gRPC reflection prefix — excludes all reflection sub-methods
+                        prefix: "/grpc.reflection"
+                    # All other paths: require a valid JWT from any configured issuer
+                    - match:
+                        prefix: "/"
+                      requires:
+                        requires_any:
+                          requirements:
+                            {{- range $root.Values.envoy.oidc.issuers }}
+                            {{- if .enabled }}
+                            - provider_name: {{ .name }}
+                            {{- end }}
+                            {{- end }}
+                            {{- if $root.Values.envoy.oidc.github.enabled }}
+                            - provider_name: github
+                            {{- end }}
+              {{- end }}
+              # 3. External authorization - OIDC ext_authz (Casbin RBAC)
+              - name: envoy.filters.http.ext_authz
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
+                  transport_api_version: V3
+                  grpc_service:
+                    envoy_grpc:
+                      cluster_name: ext_authz
+                    timeout: 5s
+                  failure_mode_allow: false
+                  include_peer_certificate: true
+                  include_tls_session: true
+              # Router filter (must be last)
+              - name: envoy.filters.http.router
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+{{- end -}}
+
+{{- $mtlsEnabled := .Values.envoy.endpoints.mtls.enabled -}}
+{{- $oidcPort := .Values.envoy.endpoints.oidc.port -}}
+{{- $mtlsPort := default 8443 .Values.envoy.endpoints.mtls.port -}}
+{{- $oidcTlsEnabled := .Values.envoy.endpoints.oidc.downstreamTls.enabled -}}
+{{- $oidcRequireClientCertificate := .Values.envoy.endpoints.oidc.downstreamTls.requireClientCertificate -}}
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -25,216 +252,12 @@ data:
 
     static_resources:
       listeners:
-        - name: main_listener
-          address:
-            socket_address:
-              address: 0.0.0.0
-              port_value: 8080
-          filter_chains:
-            - {{- if and .Values.envoy.spiffe.enabled .Values.envoy.spiffe.downstream.enabled }}
-              transport_socket:
-                name: envoy.transport_sockets.tls
-                typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.DownstreamTlsContext
-                  require_client_certificate: {{ .Values.envoy.spiffe.downstream.requireClientCertificate }}
-                  common_tls_context:
-                    tls_certificate_sds_secret_configs:
-                    - name: {{ printf "spiffe://%s/ns/%s/sa/%s" (default "example.org" .Values.envoy.spiffe.trustDomain) .Release.Namespace (include "oidc-gateway.envoyServiceAccountName" .) | quote }}
-                      sds_config:
-                        api_config_source:
-                          api_type: GRPC
-                          grpc_services:
-                          - envoy_grpc:
-                              cluster_name: spiffe_agent
-                    combined_validation_context:
-                      default_validation_context:
-                        match_typed_subject_alt_names:
-                          - san_type: URI
-                            matcher:
-                              prefix: {{ printf "spiffe://%s/" (default "example.org" .Values.envoy.spiffe.trustDomain) | quote }}
-                      validation_context_sds_secret_config:
-                        name: {{ printf "spiffe://%s" (default "example.org" .Values.envoy.spiffe.trustDomain) | quote }}
-                        sds_config:
-                          api_config_source:
-                            api_type: GRPC
-                            grpc_services:
-                            - envoy_grpc:
-                                cluster_name: spiffe_agent
-              {{- end }}
-              filters:
-                - name: envoy.filters.network.http_connection_manager
-                  typed_config:
-                    "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                    stat_prefix: ingress_http
-                    codec_type: AUTO
-                    http2_protocol_options: {}
-                    forward_client_cert_details: APPEND_FORWARD
-                    set_current_client_cert_details:
-                      uri: true
-                    access_log:
-                      - name: envoy.access_loggers.stdout
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.access_loggers.stream.v3.StdoutAccessLog
-                    route_config:
-                      name: local_route
-                      virtual_hosts:
-                        - name: backend
-                          domains: ["*"]
-                          routes:
-                            # Health check - no auth
-                            - match:
-                                path: "/healthz"
-                              direct_response:
-                                status: 200
-                                body:
-                                  inline_string: '{"status":"healthy"}'
-                              typed_per_filter_config:
-                                envoy.filters.http.ext_authz:
-                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
-                                  disabled: true
-                            # Long-lived server-streaming RPC route (optional, configurable timeout)
-                            {{- if .Values.envoy.backend.streamingPath }}
-                            - match:
-                                path: {{ .Values.envoy.backend.streamingPath | quote }}
-                              route:
-                                cluster: backend
-                                timeout: {{ .Values.envoy.backend.listenRouteTimeout }}
-                              request_headers_to_remove:
-                                - "authorization"
-                              typed_per_filter_config:
-                                envoy.filters.http.header_mutation:
-                                  "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutationPerRoute
-                                  mutations:
-                                    request_mutations:
-                                      - remove: "x-jwt-payload"
-                            {{- end }}
-                            # gRPC reflection - no JWT required, no ext_authz (public)
-                            - match:
-                                prefix: "/grpc.reflection"
-                              route:
-                                cluster: backend
-                                timeout: {{ .Values.envoy.backend.timeout }}
-                              request_headers_to_remove:
-                                - "authorization"
-                              typed_per_filter_config:
-                                envoy.filters.http.ext_authz:
-                                  "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
-                                  disabled: true
-                            # Catch-all - require JWT, strip Authorization before backend
-                            - match:
-                                prefix: "/"
-                              route:
-                                cluster: backend
-                                timeout: {{ .Values.envoy.backend.timeout }}
-                              request_headers_to_remove:
-                                - "authorization"
-                              typed_per_filter_config:
-                                envoy.filters.http.header_mutation:
-                                  "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutationPerRoute
-                                  mutations:
-                                    request_mutations:
-                                      - remove: "x-jwt-payload"
-                    http_filters:
-                      # 1. Header Mutation - strip client-supplied x-jwt-payload (defense-in-depth)
-                      - name: envoy.filters.http.header_mutation
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
-                          mutations:
-                            request_mutations:
-                              - remove: "x-jwt-payload"
-                              - remove: {{ default "x-auth-principal" .Values.authServer.oidc.headers.authPrincipal | quote }}
-                      {{- $hasIssuers := (or .Values.envoy.oidc.issuers .Values.envoy.oidc.github.enabled) }}
-                      {{- if $hasIssuers }}
-                      # 2. JWT Authentication - one provider per configured issuer
-                      - name: envoy.filters.http.jwt_authn
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
-                          providers:
-                            {{- range .Values.envoy.oidc.issuers }}
-                            {{- if .enabled }}
-                            {{ .name }}:
-                              issuer: {{ .issuer | quote }}
-                              remote_jwks:
-                                http_uri:
-                                  uri: {{ .jwksUri | quote }}
-                                  cluster: jwks_{{ .name }}
-                                  timeout: {{ $.Values.envoy.oidc.jwksTimeout }}
-                                cache_duration:
-                                  seconds: {{ $.Values.envoy.oidc.jwksCacheSeconds }}
-                              from_headers:
-                                - name: Authorization
-                                  value_prefix: 'Bearer '
-                              {{- if .audiences }}
-                              audiences:
-                                {{- range .audiences }}
-                                - {{ . | quote }}
-                                {{- end }}
-                              {{- end }}
-                              forward: true
-                              forward_payload_header: 'x-jwt-payload'
-                            {{- end }}
-                            {{- end }}
-                            {{- if .Values.envoy.oidc.github.enabled }}
-                            github:
-                              issuer: {{ .Values.envoy.oidc.github.issuer | quote }}
-                              remote_jwks:
-                                http_uri:
-                                  uri: {{ .Values.envoy.oidc.github.jwksUri | quote }}
-                                  cluster: jwks_github
-                                  timeout: {{ .Values.envoy.oidc.jwksTimeout }}
-                                cache_duration:
-                                  seconds: {{ .Values.envoy.oidc.jwksCacheSeconds }}
-                              from_headers:
-                                - name: Authorization
-                                  value_prefix: 'Bearer '
-                              {{- if .Values.envoy.oidc.github.audiences }}
-                              audiences:
-                                {{- range .Values.envoy.oidc.github.audiences }}
-                                - {{ . | quote }}
-                                {{- end }}
-                              {{- end }}
-                              forward: true
-                              forward_payload_header: 'x-jwt-payload'
-                            {{- end }}
-                          rules:
-                            # Public paths: no JWT required — must come before the catch-all
-                            - match:
-                                path: "/healthz"
-                            - match:
-                                # gRPC reflection prefix — excludes all reflection sub-methods
-                                prefix: "/grpc.reflection"
-                            # All other paths: require a valid JWT from any configured issuer
-                            - match:
-                                prefix: "/"
-                              requires:
-                                requires_any:
-                                  requirements:
-                                    {{- range .Values.envoy.oidc.issuers }}
-                                    {{- if .enabled }}
-                                    - provider_name: {{ .name }}
-                                    {{- end }}
-                                    {{- end }}
-                                    {{- if .Values.envoy.oidc.github.enabled }}
-                                    - provider_name: github
-                                    {{- end }}
-                      {{- end }}
-                      # 3. External authorization - OIDC ext_authz (Casbin RBAC)
-                      - name: envoy.filters.http.ext_authz
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthz
-                          transport_api_version: V3
-                          grpc_service:
-                            envoy_grpc:
-                              cluster_name: ext_authz
-                            timeout: 5s
-                          failure_mode_allow: false
-                          include_peer_certificate: true
-                          include_tls_session: true
-                      # Router filter (must be last)
-                      - name: envoy.filters.http.router
-                        typed_config:
-                          "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
-
+        {{- if .Values.envoy.endpoints.oidc.enabled }}
+        {{- include "oidc-gateway.envoyListener" (dict "root" . "name" "oidc_listener" "port" $oidcPort "tlsEnabled" $oidcTlsEnabled "requireClientCertificate" $oidcRequireClientCertificate "includeJwtAuth" true) | nindent 8 }}
+        {{- end }}
+        {{- if $mtlsEnabled }}
+        {{- include "oidc-gateway.envoyListener" (dict "root" . "name" "mtls_listener" "port" $mtlsPort "tlsEnabled" .Values.envoy.endpoints.mtls.downstreamTls.enabled "requireClientCertificate" .Values.envoy.endpoints.mtls.downstreamTls.requireClientCertificate "includeJwtAuth" false) | nindent 8 }}
+        {{- end }}
       clusters:
         # ExtAuthz service
         - name: ext_authz
@@ -364,4 +387,3 @@ data:
                         pipe:
                           path: /run/spire/agent-sockets/api.sock
         {{- end }}
-

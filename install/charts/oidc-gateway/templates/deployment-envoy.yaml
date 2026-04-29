@@ -34,9 +34,16 @@ spec:
         securityContext:
           {{- toYaml .Values.securityContext | nindent 10 }}
         ports:
-        - name: http
-          containerPort: 8080
+        {{- if .Values.envoy.endpoints.oidc.enabled }}
+        - name: oidc
+          containerPort: {{ .Values.envoy.endpoints.oidc.port }}
           protocol: TCP
+        {{- end }}
+        {{- if .Values.envoy.endpoints.mtls.enabled }}
+        - name: mtls
+          containerPort: {{ default 8443 .Values.envoy.endpoints.mtls.port }}
+          protocol: TCP
+        {{- end }}
         {{- if .Values.envoy.admin.enabled }}
         - name: admin
           containerPort: {{ .Values.envoy.admin.port }}

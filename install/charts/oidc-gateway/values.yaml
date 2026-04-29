@@ -16,8 +16,25 @@ envoy:
 
   service:
     type: ClusterIP
-    port: 8080
     annotations: {}
+
+  # Downstream endpoint configuration.
+  # Enable mtls to expose a second Envoy listener for SPIFFE X.509-SVID callers.
+  endpoints:
+    oidc:
+      enabled: true
+      port: 8080
+      servicePort: 8080
+      downstreamTls:
+        enabled: false
+        requireClientCertificate: false
+    mtls:
+      enabled: false
+      port: 8443
+      servicePort: 8443
+      downstreamTls:
+        enabled: true
+        requireClientCertificate: true
 
   # Backend service configuration
   backend:
@@ -75,11 +92,6 @@ envoy:
     # SPIRE controller className (must match SPIRE Controller Manager deployment)
     # Default: "spire" — override if your SPIRE install uses a different class name
     className: spire
-    downstream:
-      # Enables downstream TLS listener support to accept SPIFFE X.509-SVID client certs.
-      enabled: false
-      # Keep false to allow bearer-only callers without client certificates.
-      requireClientCertificate: false
 
   resources:
     requests:
@@ -169,19 +181,31 @@ authServer:
       cpu: 200m
       memory: 256Mi
 
-# Ingress configuration (optional)
+# Ingress configuration (optional).
 ingress:
-  enabled: false
-  className: nginx
-  host: ""
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
-    external-dns.alpha.kubernetes.io/hostname: ""
-    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
-    nginx.ingress.kubernetes.io/grpc-backend: "true"
-  tls:
-    enabled: true
-    secretName: ""
+  oidc:
+    enabled: false
+    className: nginx
+    host: ""
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt
+      external-dns.alpha.kubernetes.io/hostname: ""
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+      nginx.ingress.kubernetes.io/grpc-backend: "true"
+    tls:
+      enabled: true
+      secretName: ""
+  mtls:
+    enabled: false
+    className: nginx
+    host: ""
+    annotations:
+      external-dns.alpha.kubernetes.io/hostname: ""
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "GRPCS"
+    tls:
+      enabled: true
+      secretName: ""
 
 # Service account
 serviceAccount:
