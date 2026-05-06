@@ -24,6 +24,7 @@ vars:
 
   ## Dependency config
   BIN_DIR: "{{ .ROOT_DIR }}/.bin"
+  RENOVATE_VERSION: "43.89.5"
   GO_VERSION: "1.26.2"
   # renovate: datasource=github-tags depName=golangci/golangci-lint versioning=semver
   GOLANGCI_LINT_VERSION: "2.11.3"
