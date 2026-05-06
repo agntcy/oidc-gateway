@@ -8,19 +8,22 @@ on:
   # Run the workflow manually
   workflow_dispatch:
 
-# Declare default permissions as read-only
-permissions: read-all
+permissions:
+  issues: write
+  pull-requests: write
 
 jobs:
   mark-stale:
-    # Call reusable workflow file
-    uses: agntcy/github-reusable-workflows/.github/workflows/_stale.yml@main
-    permissions:
-      contents: read
-      issues: write
-      pull-requests: write
-    with:
-      days-until-stale: 60
-      days-until-close: 7
-      stale-label: "stale"
-      exempt-label: "keep"
+    name: Mark stale items
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark stale issues and pull requests
+        uses: actions/stale@b5d41d4e1d5dceea10e7104786b73624c18a190f # v10.2.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          days-before-stale: 60
+          days-before-close: 7
+          stale-issue-label: stale
+          stale-pr-label: stale
+          exempt-issue-labels: keep
+          exempt-pr-labels: keep
