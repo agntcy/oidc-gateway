@@ -12,6 +12,7 @@ linters:
     - gochecknoglobals # Allow global variables
     - gochecknoinits # Allow init function
     - godox # Allow TODOs
+    - gomodguard # Deprecated since golangci-lint v2.12; default set includes gomodguard_v2
     - gomoddirectives # Allow replaces in go.mod
     - inamedparam # Allow unnamed args
     - ireturn # Allow returning with interfaces
