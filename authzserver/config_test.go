@@ -10,13 +10,13 @@ import (
 
 func validConfig() *OIDCConfig {
 	return &OIDCConfig{
-		Claims:      ClaimsConfig{PrincipalClaim: "sub"},
-		PublicPaths: []string{"/healthz"},
+		Claims:      ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+		PublicPaths: []string{testPathHealthz},
 		Issuers: []IssuerConfig{
-			{ProviderKey: "dex", Provider: "https://dex.example.com", AuthFamily: "oidc"},
+			{ProviderKey: testProviderKeyDex, Provider: testDexIssuerURL, AuthFamily: testAuthFamilyOIDC},
 		},
 		Roles: map[string]OIDCRole{
-			"admin": {
+			testRoleAdmin: {
 				AllowedMethods: []string{"*"},
 				Principals:     []string{"oidc:dex:123"},
 			},
@@ -68,7 +68,7 @@ func TestOIDCConfig_Validate(t *testing.T) {
 			name: "missing claims.principalClaim",
 			config: &OIDCConfig{
 				Claims: ClaimsConfig{PrincipalClaim: ""},
-				Roles:  map[string]OIDCRole{"admin": {AllowedMethods: []string{"*"}, Principals: []string{"oidc:dex:admin"}}},
+				Roles:  map[string]OIDCRole{testRoleAdmin: {AllowedMethods: []string{"*"}, Principals: []string{testPrincipalOIDCDexAdmin}}},
 			},
 			expectError: true,
 			errorMsg:    "principalClaim",
@@ -76,7 +76,7 @@ func TestOIDCConfig_Validate(t *testing.T) {
 		{
 			name: "no roles",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles:  map[string]OIDCRole{},
 			},
 			expectError: true,
@@ -85,9 +85,9 @@ func TestOIDCConfig_Validate(t *testing.T) {
 		{
 			name: "issuer missing provider",
 			config: &OIDCConfig{
-				Claims:  ClaimsConfig{PrincipalClaim: "sub"},
-				Issuers: []IssuerConfig{{ProviderKey: "dex", Provider: "", AuthFamily: "oidc"}},
-				Roles:   map[string]OIDCRole{"admin": {AllowedMethods: []string{"*"}, Principals: []string{"oidc:dex:admin"}}},
+				Claims:  ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				Issuers: []IssuerConfig{{ProviderKey: testProviderKeyDex, Provider: "", AuthFamily: testAuthFamilyOIDC}},
+				Roles:   map[string]OIDCRole{testRoleAdmin: {AllowedMethods: []string{"*"}, Principals: []string{testPrincipalOIDCDexAdmin}}},
 			},
 			expectError: true,
 			errorMsg:    "provider",
@@ -95,9 +95,9 @@ func TestOIDCConfig_Validate(t *testing.T) {
 		{
 			name: "oidc issuer missing providerKey",
 			config: &OIDCConfig{
-				Claims:  ClaimsConfig{PrincipalClaim: "sub"},
-				Issuers: []IssuerConfig{{Provider: "https://iss", AuthFamily: "oidc"}},
-				Roles:   map[string]OIDCRole{"admin": {AllowedMethods: []string{"*"}, Principals: []string{"oidc:dex:admin"}}},
+				Claims:  ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				Issuers: []IssuerConfig{{Provider: "https://iss", AuthFamily: testAuthFamilyOIDC}},
+				Roles:   map[string]OIDCRole{testRoleAdmin: {AllowedMethods: []string{"*"}, Principals: []string{testPrincipalOIDCDexAdmin}}},
 			},
 			expectError: true,
 			errorMsg:    "providerKey",
@@ -105,9 +105,9 @@ func TestOIDCConfig_Validate(t *testing.T) {
 		{
 			name: "invalid issuer authFamily",
 			config: &OIDCConfig{
-				Claims:  ClaimsConfig{PrincipalClaim: "sub"},
-				Issuers: []IssuerConfig{{ProviderKey: "dex", Provider: "https://iss", AuthFamily: "jwt"}},
-				Roles:   map[string]OIDCRole{"admin": {AllowedMethods: []string{"*"}, Principals: []string{"oidc:dex:admin"}}},
+				Claims:  ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				Issuers: []IssuerConfig{{ProviderKey: testProviderKeyDex, Provider: "https://iss", AuthFamily: "jwt"}},
+				Roles:   map[string]OIDCRole{testRoleAdmin: {AllowedMethods: []string{"*"}, Principals: []string{testPrincipalOIDCDexAdmin}}},
 			},
 			expectError: true,
 			errorMsg:    "authFamily",
@@ -115,7 +115,7 @@ func TestOIDCConfig_Validate(t *testing.T) {
 		{
 			name: "valid github workflow wildcard principal",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci": {
 						AllowedMethods: []string{"*"},
@@ -130,7 +130,7 @@ func TestOIDCConfig_Validate(t *testing.T) {
 		{
 			name: "invalid github wildcard multiple stars",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci": {
 						AllowedMethods: []string{"*"},
@@ -141,12 +141,12 @@ func TestOIDCConfig_Validate(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "invalid github workflow wildcard",
+			errorMsg:    testErrInvalidGitHubWildcard,
 		},
 		{
 			name: "invalid github wildcard not under refs heads",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci": {
 						AllowedMethods: []string{"*"},
@@ -157,12 +157,12 @@ func TestOIDCConfig_Validate(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "invalid github workflow wildcard",
+			errorMsg:    testErrInvalidGitHubWildcard,
 		},
 		{
 			name: "invalid github broad wildcard principal",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci": {
 						AllowedMethods: []string{"*"},
@@ -171,7 +171,7 @@ func TestOIDCConfig_Validate(t *testing.T) {
 				},
 			},
 			expectError: true,
-			errorMsg:    "invalid github workflow wildcard",
+			errorMsg:    testErrInvalidGitHubWildcard,
 		},
 	}
 
@@ -204,13 +204,13 @@ func TestOIDCConfig_Validate(t *testing.T) {
 func TestOIDCConfig_GetIssuerConfig(t *testing.T) {
 	config := &OIDCConfig{
 		Issuers: []IssuerConfig{
-			{ProviderKey: "dex", Provider: "https://iss-a.example.com", AuthFamily: "oidc"},
-			{ProviderKey: "github", Provider: GitHubIssuer, AuthFamily: "oidc"},
+			{ProviderKey: testProviderKeyDex, Provider: "https://iss-a.example.com", AuthFamily: testAuthFamilyOIDC},
+			{ProviderKey: ProviderKeyGitHub, Provider: GitHubIssuer, AuthFamily: testAuthFamilyOIDC},
 		},
 	}
 
 	ic := config.GetIssuerConfig("https://iss-a.example.com")
-	if ic == nil || ic.ProviderKey != "dex" {
+	if ic == nil || ic.ProviderKey != testProviderKeyDex {
 		t.Fatalf("expected dex issuer config, got %+v", ic)
 	}
 
@@ -220,13 +220,13 @@ func TestOIDCConfig_GetIssuerConfig(t *testing.T) {
 }
 
 func TestOIDCConfig_IsPublicPath(t *testing.T) {
-	config := &OIDCConfig{PublicPaths: []string{"/healthz", "/grpc.reflection"}}
+	config := &OIDCConfig{PublicPaths: []string{testPathHealthz, "/grpc.reflection"}}
 
 	tests := []struct {
 		path string
 		want bool
 	}{
-		{"/healthz", true},
+		{testPathHealthz, true},
 		{"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo", true},
 		{"/agntcy.oidc-gateway.store.v1.StoreService/Push", false},
 	}

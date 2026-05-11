@@ -87,7 +87,7 @@ func ExtractPrincipal(payloadJSON string, config *OIDCConfig) (identity.Identity
 	}
 
 	if issuerCfg.AuthFamily == string(identity.AuthFamilySPIFFE) {
-		spiffeID := getString(payload, "sub")
+		spiffeID := getString(payload, DefaultPrincipalClaim)
 		normalized := identity.Identity{
 			AuthFamily: identity.AuthFamilySPIFFE,
 			Principal:  spiffeID,
@@ -103,7 +103,7 @@ func ExtractPrincipal(payloadJSON string, config *OIDCConfig) (identity.Identity
 	var principalValue string
 
 	switch {
-	case issuerCfg.Provider == GitHubIssuer || issuerCfg.ProviderKey == "github":
+	case issuerCfg.Provider == GitHubIssuer || issuerCfg.ProviderKey == ProviderKeyGitHub:
 		principalValue, err = extractGitHubPrincipal(payload)
 	default:
 		principalValue, err = extractOIDCPrincipal(payload, config.Claims.PrincipalClaim)
@@ -131,7 +131,7 @@ func ExtractPrincipal(payloadJSON string, config *OIDCConfig) (identity.Identity
 
 func extractOIDCPrincipal(payload map[string]any, principalClaim string) (string, error) {
 	if principalClaim == "" {
-		principalClaim = "sub"
+		principalClaim = DefaultPrincipalClaim
 	}
 
 	if value := getString(payload, principalClaim); value != "" {

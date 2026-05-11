@@ -34,16 +34,16 @@ func makeCheckRequest(path string, headers map[string]string) *authv3.CheckReque
 
 func validOIDCConfig() *OIDCConfig {
 	return &OIDCConfig{
-		Claims:      ClaimsConfig{PrincipalClaim: "email", EmailClaimPath: "email"},
-		PublicPaths: []string{"/healthz"},
+		Claims:      ClaimsConfig{PrincipalClaim: testClaimEmail, EmailClaimPath: testClaimEmail},
+		PublicPaths: []string{testPathHealthz},
 		Issuers: []IssuerConfig{
-			{ProviderKey: "dex", Provider: "https://dex.example.com", AuthFamily: "oidc"},
-			{Provider: "https://spire-oidc.example.org", AuthFamily: "spiffe"},
+			{ProviderKey: testProviderKeyDex, Provider: testDexIssuerURL, AuthFamily: testAuthFamilyOIDC},
+			{Provider: "https://spire-oidc.example.org", AuthFamily: testAuthFamilySPIFFE},
 		},
 		Roles: map[string]OIDCRole{
-			"admin": {
+			testRoleAdmin: {
 				AllowedMethods: []string{"*"},
-				Principals:     []string{"oidc:dex:admin@example.com"},
+				Principals:     []string{testPrincipalOIDCDexAdminEmail},
 			},
 			"spiffe-admin": {
 				AllowedMethods: []string{"*"},
@@ -105,7 +105,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("public path allows without auth", func(t *testing.T) {
-		req := makeCheckRequest("/healthz", nil)
+		req := makeCheckRequest(testPathHealthz, nil)
 
 		resp, err := srv.Check(ctx, req)
 		if err != nil {
@@ -145,7 +145,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 
 	t.Run("principal in deny list returns 403", func(t *testing.T) {
 		cfg := validOIDCConfig()
-		cfg.DenyList = []string{"oidc:dex:admin@example.com"}
+		cfg.DenyList = []string{testPrincipalOIDCDexAdminEmail}
 
 		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
 		if err != nil {
@@ -220,9 +220,9 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 	t.Run("unauthorized path returns 403", func(t *testing.T) {
 		cfg := validOIDCConfig()
 		cfg.Roles = map[string]OIDCRole{
-			"viewer": {
+			testRoleViewer: {
 				AllowedMethods: []string{"/other/path"},
-				Principals:     []string{"oidc:dex:admin@example.com"},
+				Principals:     []string{testPrincipalOIDCDexAdminEmail},
 			},
 		}
 
