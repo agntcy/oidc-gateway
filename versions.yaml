@@ -3,7 +3,7 @@
 
 module-sets:
   oidc-gateway:
-    version: v1.1.0
+    version: v1.1.1
     modules:
       - github.com/agntcy/oidc-gateway/identity
       - github.com/agntcy/oidc-gateway/authzserver
