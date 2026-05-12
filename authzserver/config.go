@@ -11,8 +11,14 @@ import (
 	"golang.org/x/net/http/httpguts"
 )
 
-// GitHub OIDC issuer URL.
-const GitHubIssuer = "https://token.actions.githubusercontent.com"
+const (
+	// GitHub OIDC issuer URL.
+	GitHubIssuer = "https://token.actions.githubusercontent.com"
+	// DefaultPrincipalClaim is the standard OIDC subject claim when PrincipalClaim is unset.
+	DefaultPrincipalClaim = "sub"
+	// ProviderKeyGitHub is IssuerConfig.ProviderKey for GitHub Actions OIDC.
+	ProviderKeyGitHub = "github"
+)
 
 // OIDCConfig holds the OIDC-based authorization configuration.
 // Roles come only from config; no roles are extracted from JWT claims.

@@ -104,31 +104,31 @@ func TestExtractPrincipal_Errors(t *testing.T) {
 			name:    "missing iss",
 			payload: `{"sub":"abc"}`,
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 			},
 		},
 		{
 			name:    "unknown issuer",
 			payload: `{"iss":"https://unknown.example.com","sub":"abc"}`,
 			config: &OIDCConfig{
-				Claims:  ClaimsConfig{PrincipalClaim: "sub"},
-				Issuers: []IssuerConfig{{ProviderKey: "dex", Provider: "https://dex.example.com", AuthFamily: "oidc"}},
+				Claims:  ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				Issuers: []IssuerConfig{{ProviderKey: testProviderKeyDex, Provider: testDexIssuerURL, AuthFamily: testAuthFamilyOIDC}},
 			},
 		},
 		{
 			name:    "spiffe auth family invalid principal",
 			payload: `{"iss":"https://spire.example.com","sub":""}`,
 			config: &OIDCConfig{
-				Claims:  ClaimsConfig{PrincipalClaim: "sub"},
-				Issuers: []IssuerConfig{{Provider: "https://spire.example.com", AuthFamily: "spiffe"}},
+				Claims:  ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				Issuers: []IssuerConfig{{Provider: "https://spire.example.com", AuthFamily: testAuthFamilySPIFFE}},
 			},
 		},
 		{
 			name:    "oidc missing providerKey",
 			payload: `{"iss":"https://dex.example.com","sub":"abc"}`,
 			config: &OIDCConfig{
-				Claims:  ClaimsConfig{PrincipalClaim: "sub"},
-				Issuers: []IssuerConfig{{Provider: "https://dex.example.com", AuthFamily: "oidc"}},
+				Claims:  ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				Issuers: []IssuerConfig{{Provider: testDexIssuerURL, AuthFamily: testAuthFamilyOIDC}},
 			},
 		},
 	}
@@ -145,12 +145,12 @@ func TestExtractPrincipal_Errors(t *testing.T) {
 
 func TestExtractPrincipal_GitHubBranches(t *testing.T) {
 	config := &OIDCConfig{
-		Claims: ClaimsConfig{PrincipalClaim: "sub"},
+		Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 		Issuers: []IssuerConfig{
 			{
-				ProviderKey: "github",
+				ProviderKey: ProviderKeyGitHub,
 				Provider:    GitHubIssuer,
-				AuthFamily:  "oidc",
+				AuthFamily:  testAuthFamilyOIDC,
 			},
 		},
 	}
@@ -169,9 +169,8 @@ func TestExtractPrincipal_GitHubBranches(t *testing.T) {
 			t.Fatalf("ExtractPrincipal: %v", err)
 		}
 
-		want := "oidc:github:repo:agntcy/oidc-gateway:workflow:deploy.yml:ref:refs/heads/main:env:prod"
-		if string(principal) != want {
-			t.Fatalf("principal = %q, want %q", principal, want)
+		if string(principal) != testPrincipalGitHubWorkflowProd {
+			t.Fatalf("principal = %q, want %q", principal, testPrincipalGitHubWorkflowProd)
 		}
 	})
 
@@ -220,7 +219,7 @@ func TestExtractPrincipal_GitHubBranches(t *testing.T) {
 
 func TestExtractOIDCPrincipalFallbacks(t *testing.T) {
 	t.Run("default principal claim uses sub", func(t *testing.T) {
-		out, err := extractOIDCPrincipal(map[string]any{"sub": "user-sub"}, "")
+		out, err := extractOIDCPrincipal(map[string]any{DefaultPrincipalClaim: "user-sub"}, "")
 		if err != nil {
 			t.Fatalf("extractOIDCPrincipal: %v", err)
 		}

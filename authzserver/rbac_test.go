@@ -19,11 +19,11 @@ func TestNewOIDCRoleResolver(t *testing.T) {
 
 	t.Run("nil logger uses default", func(t *testing.T) {
 		cfg := &OIDCConfig{
-			Claims: ClaimsConfig{PrincipalClaim: "sub"},
+			Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 			Roles: map[string]OIDCRole{
-				"admin": {
+				testRoleAdmin: {
 					AllowedMethods: []string{"*"},
-					Principals:     []string{"oidc:dex:admin"},
+					Principals:     []string{testPrincipalOIDCDexAdmin},
 				},
 			},
 		}
@@ -43,7 +43,7 @@ func TestOIDCRoleResolver_LoadPolicies_EmptyMappings(t *testing.T) {
 	// Intentionally bypass config.Validate() here to exercise loadPolicies branches
 	// where both policies and groupings are empty.
 	cfg := &OIDCConfig{
-		Claims: ClaimsConfig{PrincipalClaim: "sub"},
+		Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 		Roles: map[string]OIDCRole{
 			"empty": {
 				AllowedMethods: []string{},
@@ -76,92 +76,92 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 		{
 			name: "user with admin role allows all methods",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
-					"admin": {
+					testRoleAdmin: {
 						AllowedMethods: []string{"*"},
-						Principals:     []string{"oidc:dex:77776025198584418"},
+						Principals:     []string{testPrincipalDexNumeric},
 					},
 				},
 			},
-			principal:   "oidc:dex:77776025198584418",
-			path:        "/agntcy.dir.store.v1.StoreService/Push",
+			principal:   testPrincipalDexNumeric,
+			path:        testPathStorePush,
 			expectError: false,
 		},
 		{
 			name: "viewer allows Pull and Lookup only",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
-					"viewer": {
+					testRoleViewer: {
 						AllowedMethods: []string{
-							"/agntcy.dir.store.v1.StoreService/Pull",
+							testPathStorePull,
 							"/agntcy.dir.store.v1.StoreService/Lookup",
 						},
-						Principals: []string{"oidc:dex:111"},
+						Principals: []string{testPrincipalDex111},
 					},
 				},
 			},
-			principal:   "oidc:dex:111",
-			path:        "/agntcy.dir.store.v1.StoreService/Pull",
+			principal:   testPrincipalDex111,
+			path:        testPathStorePull,
 			expectError: false,
 		},
 		{
 			name: "viewer denied for Push",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
-					"viewer": {
-						AllowedMethods: []string{"/agntcy.dir.store.v1.StoreService/Pull"},
-						Principals:     []string{"oidc:dex:111"},
+					testRoleViewer: {
+						AllowedMethods: []string{testPathStorePull},
+						Principals:     []string{testPrincipalDex111},
 					},
 				},
 			},
-			principal:   "oidc:dex:111",
-			path:        "/agntcy.dir.store.v1.StoreService/Push",
+			principal:   testPrincipalDex111,
+			path:        testPathStorePush,
 			expectError: true,
 		},
 		{
 			name: "client principal with ci-writer role",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci-writer": {
 						AllowedMethods: []string{
-							"/agntcy.dir.store.v1.StoreService/Push",
-							"/agntcy.dir.store.v1.StoreService/Pull",
+							testPathStorePush,
+							testPathStorePull,
 						},
 						Principals: []string{"oidc:dex:69234237810729234"},
 					},
 				},
 			},
 			principal:   "oidc:dex:69234237810729234",
-			path:        "/agntcy.dir.store.v1.StoreService/Push",
+			path:        testPathStorePush,
 			expectError: false,
 		},
 		{
 			name: "GitHub workflow principal with prod-deployer role",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"prod-deployer": {
 						AllowedMethods: []string{"*"},
-						Principals:     []string{"oidc:github:repo:agntcy/oidc-gateway:workflow:deploy.yml:ref:refs/heads/main:env:prod"},
+						Principals:     []string{testPrincipalGitHubWorkflowProd},
 					},
 				},
 			},
-			principal:   "oidc:github:repo:agntcy/oidc-gateway:workflow:deploy.yml:ref:refs/heads/main:env:prod",
-			path:        "/agntcy.dir.store.v1.StoreService/Push",
+			principal:   testPrincipalGitHubWorkflowProd,
+			path:        testPathStorePush,
 			expectError: false,
 		},
 		{
 			name: "GitHub workflow wildcard principal matches any branch",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci-oidc-test": {
 						AllowedMethods: []string{
-							"/agntcy.dir.search.v1.SearchService/SearchCIDs",
+							testPathSearchCIDs,
 						},
 						Principals: []string{
 							"oidc:github:repo:agntcy/oidc-gateway:workflow:oidc-test.yml:ref:refs/heads/*",
@@ -170,17 +170,17 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 				},
 			},
 			principal:   "oidc:github:repo:agntcy/oidc-gateway:workflow:oidc-test.yml:ref:refs/heads/feat/oidc-auth",
-			path:        "/agntcy.dir.search.v1.SearchService/SearchCIDs",
+			path:        testPathSearchCIDs,
 			expectError: false,
 		},
 		{
 			name: "GitHub workflow wildcard does not match other workflow file",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"ci-oidc-test": {
 						AllowedMethods: []string{
-							"/agntcy.dir.search.v1.SearchService/SearchCIDs",
+							testPathSearchCIDs,
 						},
 						Principals: []string{
 							"oidc:github:repo:agntcy/oidc-gateway:workflow:oidc-test.yml:ref:refs/heads/*",
@@ -189,30 +189,30 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 				},
 			},
 			principal:   "oidc:github:repo:agntcy/oidc-gateway:workflow:another.yml:ref:refs/heads/feat/oidc-auth",
-			path:        "/agntcy.dir.search.v1.SearchService/SearchCIDs",
+			path:        testPathSearchCIDs,
 			expectError: true,
 		},
 		{
 			name: "principal in deny list is blocked",
 			config: &OIDCConfig{
-				Claims:   ClaimsConfig{PrincipalClaim: "sub"},
-				DenyList: []string{"oidc:dex:77776025198584418"},
+				Claims:   ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
+				DenyList: []string{testPrincipalDexNumeric},
 				Roles: map[string]OIDCRole{
-					"admin": {
+					testRoleAdmin: {
 						AllowedMethods: []string{"*"},
-						Principals:     []string{"oidc:dex:77776025198584418"},
+						Principals:     []string{testPrincipalDexNumeric},
 					},
 				},
 			},
-			principal:   "oidc:dex:77776025198584418",
-			path:        "/agntcy.dir.store.v1.StoreService/Push",
+			principal:   testPrincipalDexNumeric,
+			path:        testPathStorePush,
 			expectError: true,
 			errorMsg:    "deny list",
 		},
 		{
 			name: "no role assignment - deny",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"admin": {
 						AllowedMethods: []string{"*"},
@@ -221,21 +221,21 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 				},
 			},
 			principal:   "oidc:dex:unknown",
-			path:        "/agntcy.dir.store.v1.StoreService/Push",
+			path:        testPathStorePush,
 			expectError: true,
 		},
 		{
 			name: "wildcard method matching",
 			config: &OIDCConfig{
-				Claims: ClaimsConfig{PrincipalClaim: "sub"},
+				Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 				Roles: map[string]OIDCRole{
 					"store-admin": {
 						AllowedMethods: []string{"/agntcy.dir.store.v1.StoreService/*"},
-						Principals:     []string{"oidc:dex:admin"},
+						Principals:     []string{testPrincipalOIDCDexAdmin},
 					},
 				},
 			},
-			principal:   "oidc:dex:admin",
+			principal:   testPrincipalOIDCDexAdmin,
 			path:        "/agntcy.dir.store.v1.StoreService/AnyMethod",
 			expectError: false,
 		},
@@ -243,7 +243,7 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.config.PublicPaths = []string{"/healthz"}
+			tt.config.PublicPaths = []string{testPathHealthz}
 			if err := tt.config.Validate(); err != nil {
 				t.Fatalf("invalid config: %v", err)
 			}
@@ -281,7 +281,7 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 
 func TestOIDCRoleResolver_IsDenied(t *testing.T) {
 	config := &OIDCConfig{
-		Claims:   ClaimsConfig{PrincipalClaim: "sub"},
+		Claims:   ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 		DenyList: []string{"oidc:dex:bad", "oidc:blocked@example.com"},
 		Roles: map[string]OIDCRole{
 			"admin": {

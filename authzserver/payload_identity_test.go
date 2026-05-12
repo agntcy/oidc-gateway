@@ -10,12 +10,12 @@ import (
 
 func TestExtractPrincipalCanonicalOIDC(t *testing.T) {
 	config := &OIDCConfig{
-		Claims: ClaimsConfig{PrincipalClaim: "email"},
+		Claims: ClaimsConfig{PrincipalClaim: testClaimEmail},
 		Issuers: []IssuerConfig{
 			{
-				ProviderKey: "dex",
-				Provider:    "https://dex.example.com",
-				AuthFamily:  "oidc",
+				ProviderKey: testProviderKeyDex,
+				Provider:    testDexIssuerURL,
+				AuthFamily:  testAuthFamilyOIDC,
 			},
 		},
 	}
@@ -25,18 +25,18 @@ func TestExtractPrincipalCanonicalOIDC(t *testing.T) {
 		t.Fatalf("ExtractPrincipal: %v", err)
 	}
 
-	if principal != "oidc:dex:admin@example.com" {
+	if principal != testPrincipalOIDCDexAdminEmail {
 		t.Fatalf("principal = %q", principal)
 	}
 }
 
 func TestExtractPrincipalCanonicalSPIFFEJWT(t *testing.T) {
 	config := &OIDCConfig{
-		Claims: ClaimsConfig{PrincipalClaim: "sub"},
+		Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 		Issuers: []IssuerConfig{
 			{
 				Provider:   "https://spire-oidc.example.org",
-				AuthFamily: "spiffe",
+				AuthFamily: testAuthFamilySPIFFE,
 			},
 		},
 	}
@@ -53,12 +53,12 @@ func TestExtractPrincipalCanonicalSPIFFEJWT(t *testing.T) {
 
 func TestExtractPrincipalAcceptsEnvoyForwardedPayload(t *testing.T) {
 	config := &OIDCConfig{
-		Claims: ClaimsConfig{PrincipalClaim: "sub"},
+		Claims: ClaimsConfig{PrincipalClaim: DefaultPrincipalClaim},
 		Issuers: []IssuerConfig{
 			{
-				ProviderKey: "dex",
-				Provider:    "https://dex.example.com",
-				AuthFamily:  "oidc",
+				ProviderKey: testProviderKeyDex,
+				Provider:    testDexIssuerURL,
+				AuthFamily:  testAuthFamilyOIDC,
 			},
 		},
 	}
