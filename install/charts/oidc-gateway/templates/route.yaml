@@ -1,0 +1,56 @@
+{{/*
+Copyright AGNTCY Contributors (https://github.com/agntcy)
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{- if and .Values.route.oidc.enabled .Values.envoy.endpoints.oidc.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "oidc-gateway.fullname" . }}-oidc
+  labels:
+    {{- include "oidc-gateway.envoyLabels" . | nindent 4 }}
+  {{- with .Values.route.oidc.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.route.oidc.host }}
+  host: {{ .Values.route.oidc.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "oidc-gateway.fullname" . }}-envoy
+    weight: 100
+  port:
+    targetPort: oidc
+  tls:
+    termination: passthrough
+  wildcardPolicy: None
+{{- end }}
+{{- if and .Values.route.mtls.enabled .Values.envoy.endpoints.mtls.enabled }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "oidc-gateway.fullname" . }}-mtls
+  labels:
+    {{- include "oidc-gateway.envoyLabels" . | nindent 4 }}
+  {{- with .Values.route.mtls.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.route.mtls.host }}
+  host: {{ .Values.route.mtls.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "oidc-gateway.fullname" . }}-envoy
+    weight: 100
+  port:
+    targetPort: mtls
+  tls:
+    termination: passthrough
+  wildcardPolicy: None
+{{- end }}

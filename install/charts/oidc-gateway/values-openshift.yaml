@@ -1,0 +1,53 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+#
+# OpenShift-specific overrides for oidc-gateway.
+# Layer on top of the default values.yaml:
+#   helm install oidc-gw <chart> -f values.yaml -f values-openshift.yaml
+#
+# Before using this overlay, determine your cluster's SPIRE configuration:
+#   oc get spireserver -A -o jsonpath='{.items[0].spec.trustDomain}'
+#   oc get clusterspiffeid -A -o yaml | grep className
+
+# Explicitly disable Ingress (OpenShift uses Routes instead)
+ingress:
+  oidc:
+    enabled: false
+  mtls:
+    enabled: false
+
+# Enable OpenShift Routes with TLS passthrough
+route:
+  oidc:
+    enabled: true
+    # host: oidc-gateway-<namespace>.apps.<cluster-domain>
+  mtls:
+    enabled: true
+    # host: oidc-gateway-mtls-<namespace>.apps.<cluster-domain>
+
+# SPIRE configuration for OpenShift
+# Adjust className and namespaceSelector based on your SPIRE operator install.
+# Discover values with:
+#   oc get clusterspiffeid -A -o yaml | grep className
+#   oc get ns <namespace> --show-labels
+envoy:
+  spiffe:
+    # Set to "none" if your SPIRE controller runs without a class.
+    # Otherwise use the className from your SPIRE install (e.g. "spire-system-spire").
+    className: "none"
+    # Scope ClusterSPIFFEID to your namespace. Required when SPIRE operator
+    # restricts registration entries by namespace label.
+    namespaceSelector: {}
+    #  matchLabels:
+    #    kubernetes.io/metadata.name: "<your-namespace>"
+    # SPIRE agent socket filename
+    agentSocketName: "spire-agent.sock"
+
+  # Enable downstream TLS on the OIDC listener.
+  # Required for TLS passthrough routes.
+  endpoints:
+    oidc:
+      downstreamTls:
+        enabled: true
+    mtls:
+      enabled: true
