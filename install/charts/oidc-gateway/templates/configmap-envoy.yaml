@@ -387,5 +387,5 @@ data:
                   - endpoint:
                       address:
                         pipe:
-                          path: /run/spire/agent-sockets/api.sock
+                          path: /run/spire/agent-sockets/{{ .Values.envoy.spiffe.agentSocketName | default "api.sock" }}
         {{- end }}
