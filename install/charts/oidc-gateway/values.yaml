@@ -91,7 +91,13 @@ envoy:
     trustDomain: example.org
     # SPIRE controller className (must match SPIRE Controller Manager deployment)
     # Default: "spire" — override if your SPIRE install uses a different class name
+    # Set to "none" to omit className field for classless SPIRE controllers
     className: spire
+    # Optional: restrict ClusterSPIFFEID to specific namespace(s)
+    # Required on OpenShift when SPIRE operator scopes by namespace
+    namespaceSelector: {}
+    # SPIRE agent socket filename (may differ on OpenShift managed SPIRE operators)
+    agentSocketName: api.sock
 
   resources:
     requests:
@@ -206,6 +212,18 @@ ingress:
     tls:
       enabled: true
       secretName: ""
+
+# OpenShift Route configuration (alternative to Ingress for OpenShift clusters).
+# Use TLS passthrough since Envoy handles TLS termination via SPIFFE SDS.
+route:
+  oidc:
+    enabled: false
+    host: ""
+    annotations: {}
+  mtls:
+    enabled: false
+    host: ""
+    annotations: {}
 
 # Service account
 serviceAccount:
