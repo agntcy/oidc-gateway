@@ -1,6 +1,6 @@
 module github.com/agntcy/oidc-gateway/cmd/oidc-gateway
 
-go 1.26.2
+go 1.26.3
 
 // Replace local modules
 replace github.com/agntcy/oidc-gateway/authzserver => ../../authzserver
