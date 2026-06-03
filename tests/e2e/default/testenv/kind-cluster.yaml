@@ -1,0 +1,20 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+    # DIR API server
+    - hostPort: 18888
+      containerPort: 30088
+    # DIR metrics server
+    - hostPort: 18889
+      containerPort: 30090
+    # OIDC gateway Envoy HTTP/gRPC
+    - hostPort: 18080
+      containerPort: 30080
+    # OIDC gateway Envoy admin (stats)
+    - hostPort: 19901
+      containerPort: 30091
+    # Dex OIDC provider
+    - hostPort: 15556
+      containerPort: 30056

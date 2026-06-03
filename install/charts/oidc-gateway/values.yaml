@@ -17,6 +17,8 @@ envoy:
   service:
     type: ClusterIP
     annotations: {}
+    oidcNodePort: ""
+    adminNodePort: ""
 
   # Downstream endpoint configuration.
   # Enable mtls to expose a second Envoy listener for SPIFFE X.509-SVID callers.
@@ -64,6 +66,8 @@ envoy:
     #     issuer: "https://your-idp.example.com"
     #     jwksUri: "https://your-idp.example.com/.well-known/jwks.json"
     #     jwksHost: "your-idp.example.com"
+    #     jwksPort: 443
+    #     jwksTls: true
     #     audiences: []  # optional audience enforcement
     issuers: []
 

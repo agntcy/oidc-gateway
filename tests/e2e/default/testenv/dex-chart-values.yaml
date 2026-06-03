@@ -1,0 +1,34 @@
+# Dex IdP for the oidc-gateway kind testenv.
+# Host access: http://127.0.0.1:15556/dex (kind maps 15556 -> NodePort 30056)
+# Test user: admin@example.com / password
+
+service:
+  type: NodePort
+  ports:
+    http:
+      nodePort: 30056
+
+config:
+  issuer: http://127.0.0.1:15556/dex
+  storage:
+    type: memory
+  web:
+    http: 0.0.0.0:5556
+  logger:
+    level: info
+    format: text
+  oauth2:
+    skipApprovalScreen: true
+    passwordConnector: local
+  enablePasswordDB: true
+  staticPasswords:
+    - email: admin@example.com
+      hash: "$2a$10$ZGgqciuvkedmkh5ogZyNm.FbBBxIMT7OgaSwWtZfm6XSH/N969UmS"
+      username: admin
+      userID: admin
+  staticClients:
+    - id: oidc-gateway-test
+      secret: test-secret
+      name: OIDC Gateway Test
+      redirectURIs:
+        - http://127.0.0.1:5555/callback

@@ -1,0 +1,5 @@
+apiserver:
+  service:
+    type: "NodePort"
+    nodePort: "30088"
+    metricsNodePort: "30090"
