@@ -112,6 +112,23 @@ envoy:
     enabled: true
     port: 9901
 
+  # Rate limiting configuration
+  ratelimit:
+    # Anonymous rate limit (requests without x-auth-principal)
+    global:
+      enabled: false
+      tokenBucket:
+        maxTokens: 200
+        tokensPerFill: 200
+        fillInterval: 1s
+    # Per principal rate limit (applies to the requests of each principal)
+    perClient:
+      enabled: false
+      tokenBucket:
+        maxTokens: 1000
+        tokensPerFill: 1000
+        fillInterval: 1s
+
 # Authorization Server configuration (OIDC + Casbin)
 authServer:
   replicaCount: 1
