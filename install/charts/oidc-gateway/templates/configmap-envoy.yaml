@@ -11,7 +11,6 @@ SPDX-License-Identifier: Apache-2.0
 {{- $requireClientCertificate := .requireClientCertificate -}}
 {{- $includeJwtAuth := .includeJwtAuth -}}
 {{- $hasIssuers := (or $root.Values.envoy.oidc.issuers $root.Values.envoy.oidc.github.enabled) -}}
-{{- $ratelimit := $root.Values.envoy.ratelimit -}}
 {{- if and $tlsEnabled (not $root.Values.envoy.spiffe.enabled) -}}
 {{- fail (printf "Envoy listener %s enables downstream TLS but envoy.spiffe.enabled is false" $name) -}}
 {{- end -}}
@@ -25,6 +24,9 @@ SPDX-License-Identifier: Apache-2.0
 {{- if $root.Values.envoy.oidc.github.enabled -}}
 {{- $enabledIssuers = append $enabledIssuers "github" -}}
 {{- end -}}
+{{/* Rate limit */}}
+{{- $ratelimit := $root.Values.ratelimit -}}
+{{- $ratelimitEnabled := or $ratelimit.authServer.authenticated.enabled $ratelimit.authServer.anonymous.enabled -}}
 - name: {{ $name }}
   address:
     socket_address:
@@ -82,6 +84,13 @@ SPDX-License-Identifier: Apache-2.0
               virtual_hosts:
                 - name: backend
                   domains: ["*"]
+                  {{- if $ratelimitEnabled }}
+                  rate_limits:
+                    - actions:
+                      - request_headers:
+                          header_name: {{ $root.Values.authServer.oidc.headers.authPrincipal | default "x-auth-principal" }}
+                          descriptor_key: {{ $root.Values.authServer.oidc.headers.authPrincipal | default "x-auth-principal" }}
+                  {{- end }}
                   routes:
                     # Health check - no auth
                     - match:
@@ -94,26 +103,13 @@ SPDX-License-Identifier: Apache-2.0
                         envoy.filters.http.ext_authz:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
                           disabled: true
+                        {{- if $ratelimitEnabled }}
+                        envoy.filters.http.ratelimit:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimitPerRoute
+                          rate_limits: []
+                        {{- end }}
                     # Long-lived server-streaming RPC route (optional, configurable timeout)
                     {{- if $root.Values.envoy.backend.streamingPath }}
-                    # x-auth-principal header is present
-                    - match:
-                        path: {{ $root.Values.envoy.backend.streamingPath | quote }}
-                        headers:
-                          - name: x-auth-principal
-                            present_match: true
-                      route:
-                        cluster: backend
-                        timeout: {{ $root.Values.envoy.backend.listenRouteTimeout }}
-                      request_headers_to_remove:
-                        - "authorization"
-                      typed_per_filter_config:
-                        {{- include "oidc-gateway.envoyLocalRateLimit" (dict
-                          "key" "streaming_per_client"
-                          "enabled" $ratelimit.perClient.enabled
-                          "bucket" $ratelimit.perClient.tokenBucket
-                        ) | nindent 24 }}
-                    # x-auth-principal header is not present
                     - match:
                         path: {{ $root.Values.envoy.backend.streamingPath | quote }}
                       route:
@@ -121,12 +117,6 @@ SPDX-License-Identifier: Apache-2.0
                         timeout: {{ $root.Values.envoy.backend.listenRouteTimeout }}
                       request_headers_to_remove:
                         - "authorization"
-                      typed_per_filter_config:
-                        {{- include "oidc-gateway.envoyLocalRateLimit" (dict
-                          "key" "streaming_global"
-                          "enabled" $ratelimit.global.enabled
-                          "bucket" $ratelimit.global.tokenBucket
-                        ) | nindent 24 }}
                     {{- end }}
                     # gRPC reflection - no JWT required, no ext_authz (public)
                     - match:
@@ -140,36 +130,19 @@ SPDX-License-Identifier: Apache-2.0
                         envoy.filters.http.ext_authz:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.ext_authz.v3.ExtAuthzPerRoute
                           disabled: true
+                        {{- if $ratelimitEnabled }}
+                        envoy.filters.http.ratelimit:
+                          "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimitPerRoute
+                          rate_limits: []
+                        {{- end }}
                     # Catch-all - ext_authz decides whether X.509-SVID or bearer JWT auth is present.
                     - match:
                         prefix: "/"
-                        headers:
-                          - name: x-auth-principal
-                            present_match: true
                       route:
                         cluster: backend
                         timeout: {{ $root.Values.envoy.backend.timeout }}
                       request_headers_to_remove:
                         - "authorization"
-                      typed_per_filter_config:
-                        {{- include "oidc-gateway.envoyLocalRateLimit" (dict
-                          "key" "per_client"
-                          "enabled" $ratelimit.perClient.enabled
-                          "bucket" $ratelimit.perClient.tokenBucket
-                        ) | nindent 24 }}
-                    - match:
-                        prefix: "/"
-                      route:
-                        cluster: backend
-                        timeout: {{ $root.Values.envoy.backend.timeout }}
-                      request_headers_to_remove:
-                        - "authorization"
-                      typed_per_filter_config:
-                        {{- include "oidc-gateway.envoyLocalRateLimit" (dict
-                          "key" "global"
-                          "enabled" $ratelimit.global.enabled
-                          "bucket" $ratelimit.global.tokenBucket
-                        ) | nindent 24 }}
             http_filters:
               # 1. Header Mutation - strip client-supplied identity inputs (defense-in-depth)
               - name: envoy.filters.http.header_mutation
@@ -264,11 +237,20 @@ SPDX-License-Identifier: Apache-2.0
                   failure_mode_allow: false
                   include_peer_certificate: true
                   include_tls_session: true
-              # 4. Local rate limit after ext_authz (rate limit per x-auth-principal header)
-              - name: envoy.filters.http.local_ratelimit
+              {{- if $ratelimitEnabled }}
+              # 4. External rate limit (same authz service, RateLimitService API)
+              - name: envoy.filters.http.ratelimit
                 typed_config:
-                  "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-                  stat_prefix: http_local_rate_limiter
+                  "@type": type.googleapis.com/envoy.extensions.filters.http.ratelimit.v3.RateLimit
+                  domain: {{ $ratelimit.domain }}
+                  timeout: {{ $ratelimit.envoy.timeout }}
+                  failure_mode_deny: {{ $ratelimit.envoy.failureModeDeny }}
+                  rate_limit_service:
+                    grpc_service:
+                      envoy_grpc:
+                        cluster_name: ext_authz
+                    transport_api_version: V3
+              {{- end }}
               # Router filter (must be last)
               - name: envoy.filters.http.router
                 typed_config:

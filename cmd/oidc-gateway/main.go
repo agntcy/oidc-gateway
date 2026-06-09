@@ -14,7 +14,9 @@ import (
 	"syscall"
 
 	"github.com/agntcy/oidc-gateway/authzserver"
+	"github.com/agntcy/oidc-gateway/authzserver/ratelimit"
 	authv3 "github.com/envoyproxy/go-control-plane/envoy/service/auth/v3"
+	ratelimitv3 "github.com/envoyproxy/go-control-plane/envoy/service/ratelimit/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -49,6 +51,21 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	authv3.RegisterAuthorizationServer(grpcServer, authzServer)
+
+	if oidcConfig.RateLimit.Enabled() {
+		rateLimitServer, err := ratelimit.NewRateLimitServer(
+			&oidcConfig.RateLimit,
+			logger,
+			oidcConfig.AuthPrincipalHeader(),
+		)
+		if err != nil {
+			logger.Error("failed to create rate limit server", "error", err)
+			os.Exit(1)
+		}
+
+		ratelimitv3.RegisterRateLimitServiceServer(grpcServer, rateLimitServer)
+		logger.Info("rate limit service enabled", "domain", oidcConfig.RateLimit.Domain)
+	}
 
 	healthServer := health.NewServer()
 	healthpb.RegisterHealthServer(grpcServer, healthServer)

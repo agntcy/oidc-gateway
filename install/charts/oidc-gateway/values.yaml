@@ -116,22 +116,39 @@ envoy:
     enabled: true
     port: 9901
 
-  # Rate limiting configuration
-  ratelimit:
-    # Anonymous rate limit (requests without x-auth-principal)
-    global:
+# The rate limit configuration is shared between Envoy and the gRPC server.
+ratelimit:
+  # The rate limit domain is Envoy's way of namespacing rate limit policies.
+  #
+  # It's set on Envoy's rate limit filter (envoy.filters.http.ratelimit).
+  # The filter passes the domain to the rate limit service (gRPC) with each request.
+  # The service may decide which policy to apply to the request based on its domain.
+  #
+  # In our case, we don't have to worry about multiple domains.
+  domain: oidc_gateway
+  envoy:
+    # The Envoy rate limit filter's timeout.
+    # 50ms by default.
+    timeout: 0.05s
+    # The Envoy rate limit filter's failure_mode_deny.
+    # It controls what happens if the rate limit check fails (e.g. timeout, gRPC errors, etc.).
+    # - If false, the request continues.
+    # - If true, the request is denied.
+    # false by default.
+    failureModeDeny: false
+  authServer:
+    # The rate limit for authenticated requests.
+    # A request is authenticated if it has an x-auth-principal header.
+    authenticated:
       enabled: false
-      tokenBucket:
-        maxTokens: 200
-        tokensPerFill: 200
-        fillInterval: 1s
-    # Per principal rate limit (applies to the requests of each principal)
-    perClient:
+      rps: 100
+      burst: 200
+    # The rate limit for anonymous requests.
+    # A request is anonymous if it doesn't have an x-auth-principal header.
+    anonymous:
       enabled: false
-      tokenBucket:
-        maxTokens: 1000
-        tokensPerFill: 1000
-        fillInterval: 1s
+      rps: 100
+      burst: 200
 
 # Authorization Server configuration (OIDC + Casbin)
 authServer:
