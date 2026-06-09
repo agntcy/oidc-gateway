@@ -74,4 +74,4 @@ jobs:
           IMAGE_REPO: ${{ inputs.image_repo }}
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          task tests:e2e:test:default
+          task tests:e2e:test

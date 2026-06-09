@@ -20,4 +20,7 @@ ignored = [
   "google.golang.org/protobuf", # BSD-3-Clause
   "github.com/xi2/xz", # Public Domain https://github.com/xi2/xz/blob/master/LICENSE
   "github.com/grpc-ecosystem/go-grpc-middleware/v2", # Apache License 2.0 https://github.com/grpc-ecosystem/go-grpc-middleware/blob/main/LICENSE
+  "buf.build/gen/go/agntcy/oasf/protocolbuffers/go", # Apache-2.0 generated protobuf module (no LICENSE file in module)
+  "buf.build/gen/go/agntcy/oasf-sdk/protocolbuffers/go", # Apache-2.0 generated protobuf module (no LICENSE file in module)
+  "buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go", # Apache-2.0 generated protobuf module (no LICENSE file in module)
 ]
