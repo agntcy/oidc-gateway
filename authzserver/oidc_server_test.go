@@ -4,7 +4,7 @@
 package authzserver
 
 import (
-	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 
@@ -55,7 +55,7 @@ func validOIDCConfig() *OIDCConfig {
 
 func TestNewOIDCAuthorizationServer(t *testing.T) {
 	t.Run("nil config", func(t *testing.T) {
-		_, err := NewOIDCAuthorizationServer(nil, slog.Default())
+		_, err := NewOIDCAuthorizationServer(t.Context(), nil, slog.Default())
 		if err == nil {
 			t.Error("expected error for nil config")
 		}
@@ -64,14 +64,14 @@ func TestNewOIDCAuthorizationServer(t *testing.T) {
 	t.Run("invalid config", func(t *testing.T) {
 		cfg := &OIDCConfig{Claims: ClaimsConfig{PrincipalClaim: ""}, Roles: map[string]OIDCRole{"x": {AllowedMethods: []string{"*"}}}}
 
-		_, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		_, err := NewOIDCAuthorizationServer(t.Context(), cfg, slog.Default())
 		if err == nil {
 			t.Error("expected error for invalid config")
 		}
 	})
 
 	t.Run("success", func(t *testing.T) {
-		srv, err := NewOIDCAuthorizationServer(validOIDCConfig(), slog.Default())
+		srv, err := NewOIDCAuthorizationServer(t.Context(), validOIDCConfig(), slog.Default())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -82,7 +82,7 @@ func TestNewOIDCAuthorizationServer(t *testing.T) {
 	})
 
 	t.Run("nil logger uses default", func(t *testing.T) {
-		srv, err := NewOIDCAuthorizationServer(validOIDCConfig(), nil)
+		srv, err := NewOIDCAuthorizationServer(t.Context(), validOIDCConfig(), nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -96,13 +96,12 @@ func TestNewOIDCAuthorizationServer(t *testing.T) {
 //nolint:gocognit,cyclop // Test function with multiple subtests; high complexity is acceptable.
 func TestOIDCAuthorizationServer_Check(t *testing.T) {
 	config := validOIDCConfig()
+	ctx := t.Context()
 
-	srv, err := NewOIDCAuthorizationServer(config, slog.Default())
+	srv, err := NewOIDCAuthorizationServer(ctx, config, slog.Default())
 	if err != nil {
 		t.Fatalf("failed to create server: %v", err)
 	}
-
-	ctx := context.Background()
 
 	t.Run("public path allows without auth", func(t *testing.T) {
 		req := makeCheckRequest("/healthz", nil)
@@ -147,7 +146,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 		cfg := validOIDCConfig()
 		cfg.DenyList = []string{"oidc:dex:admin@example.com"}
 
-		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		srv2, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default())
 		if err != nil {
 			t.Fatalf("failed to create server: %v", err)
 		}
@@ -195,7 +194,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 		cfg := validOIDCConfig()
 		cfg.Headers.AuthPrincipal = "x-custom-auth-principal"
 
-		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		srv2, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default())
 		if err != nil {
 			t.Fatalf("failed to create server: %v", err)
 		}
@@ -226,7 +225,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 			},
 		}
 
-		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		srv2, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default())
 		if err != nil {
 			t.Fatalf("failed to create server: %v", err)
 		}
@@ -268,7 +267,7 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 			},
 		}
 
-		srv2, err := NewOIDCAuthorizationServer(cfg, slog.Default())
+		srv2, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default())
 		if err != nil {
 			t.Fatalf("failed to create server: %v", err)
 		}
@@ -293,8 +292,8 @@ func TestGetHeader(t *testing.T) {
 	// getHeader is unexported but exercised via Check with x-jwt-payload.
 	// Test case-insensitive lookup via integration: Envoy may send lowercase.
 	config := validOIDCConfig()
-	srv, _ := NewOIDCAuthorizationServer(config, slog.Default())
-	ctx := context.Background()
+	ctx := t.Context()
+	srv, _ := NewOIDCAuthorizationServer(ctx, config, slog.Default())
 
 	req := makeCheckRequest("/api/test", map[string]string{"X-JWT-Payload": testPayloadAdmin})
 
@@ -306,4 +305,106 @@ func TestGetHeader(t *testing.T) {
 	if resp.GetStatus().GetCode() != int32(codes.OK) {
 		t.Errorf("expected OK with X-JWT-Payload (case-insensitive), got code %d", resp.GetStatus().GetCode())
 	}
+}
+
+//nolint:cyclop // Test function with multiple subtests; high complexity is acceptable.
+func TestOIDCAuthorizationServer_Check_JWTSVID(t *testing.T) {
+	const workloadID = "spiffe://example.org/ns/default/sa/workload"
+
+	cfg := validOIDCConfig()
+	ctx := t.Context()
+
+	t.Run("valid JWT-SVID authorizes spiffe principal", func(t *testing.T) {
+		srv, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default(), WithJWTValidator(&mockJWTValidator{spiffeID: workloadID}))
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", map[string]string{
+			"Authorization": "Bearer eyJ.test.token",
+		})
+
+		resp, err := srv.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.OK) {
+			t.Fatalf("expected OK, got code %d", resp.GetStatus().GetCode())
+		}
+
+		headers := resp.GetOkResponse().GetHeaders()
+		if len(headers) != 1 {
+			t.Fatalf("expected exactly 1 header, got %d", len(headers))
+		}
+
+		wantPrincipal := "spiffe:" + workloadID
+		if headers[0].GetHeader().GetValue() != wantPrincipal {
+			t.Fatalf("expected principal %q, got %q", wantPrincipal, headers[0].GetHeader().GetValue())
+		}
+	})
+
+	t.Run("invalid JWT-SVID returns 401", func(t *testing.T) {
+		srv, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default(), WithJWTValidator(&mockJWTValidator{err: fmt.Errorf("invalid signature")}))
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", map[string]string{
+			"Authorization": "Bearer bad-token",
+		})
+
+		resp, err := srv.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.Unauthenticated) {
+			t.Errorf("expected Unauthenticated, got code %d", resp.GetStatus().GetCode())
+		}
+	})
+
+	t.Run("missing bearer returns 401 when JWT-SVID enabled", func(t *testing.T) {
+		srv, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default(), WithJWTValidator(&mockJWTValidator{spiffeID: workloadID}))
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", nil)
+
+		resp, err := srv.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.Unauthenticated) {
+			t.Errorf("expected Unauthenticated, got code %d", resp.GetStatus().GetCode())
+		}
+	})
+
+	t.Run("x-jwt-payload takes precedence over bearer JWT-SVID", func(t *testing.T) {
+		srv, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default(), WithJWTValidator(&mockJWTValidator{spiffeID: workloadID}))
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", map[string]string{
+			HeaderJWTPayload: testPayloadAdmin,
+			"Authorization":  "Bearer eyJ.test.token",
+		})
+
+		resp, err := srv.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.OK) {
+			t.Fatalf("expected OK, got code %d", resp.GetStatus().GetCode())
+		}
+
+		wantPrincipal := "oidc:dex:admin@example.com"
+		if resp.GetOkResponse().GetHeaders()[0].GetHeader().GetValue() != wantPrincipal {
+			t.Fatalf("expected OIDC principal %q", wantPrincipal)
+		}
+	})
 }

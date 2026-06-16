@@ -27,6 +27,8 @@ SPDX-License-Identifier: Apache-2.0
 {{/* Rate limit */}}
 {{- $ratelimit := $root.Values.ratelimit -}}
 {{- $ratelimitEnabled := or $ratelimit.authServer.authenticated.enabled $ratelimit.authServer.anonymous.enabled -}}
+
+{{- $jwtSvidPassthrough := $root.Values.envoy.oidc.jwtSvid.allowMissingOrFailed -}}
 - name: {{ $name }}
   address:
     socket_address:
@@ -152,7 +154,7 @@ SPDX-License-Identifier: Apache-2.0
                     request_mutations:
                       - remove: "x-jwt-payload"
                       - remove: {{ default "x-auth-principal" $root.Values.authServer.oidc.headers.authPrincipal | quote }}
-              {{- if and $includeJwtAuth $hasIssuers }}
+              {{- if and $includeJwtAuth (or $hasIssuers $jwtSvidPassthrough) }}
               # 2. JWT Authentication - one provider per configured issuer
               - name: envoy.filters.http.jwt_authn
                 typed_config:
@@ -215,13 +217,18 @@ SPDX-License-Identifier: Apache-2.0
                     - match:
                         prefix: "/"
                       requires:
-                        {{- if eq (len $enabledIssuers) 1 }}
+                        {{- if and (eq (len $enabledIssuers) 1) (not $jwtSvidPassthrough) }}
                         provider_name: {{ index $enabledIssuers 0 }}
+                        {{- else if and (eq (len $enabledIssuers) 0) $jwtSvidPassthrough }}
+                        allow_missing_or_failed: { }
                         {{- else }}
                         requires_any:
                           requirements:
                             {{- range $enabledIssuers }}
-                            - provider_name: {{ .name }}
+                            - provider_name: {{ . }}
+                            {{- end }}
+                            {{- if $jwtSvidPassthrough }}
+                            - allow_missing_or_failed: { }
                             {{- end }}
                         {{- end }}
               {{- end }}

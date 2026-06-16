@@ -85,6 +85,11 @@ envoy:
     jwksTimeout: 5s
     jwksCacheSeconds: 300
 
+    # When true, Envoy jwt_authn allows requests without a matching OIDC JWT so
+    # federated JWT-SVIDs can be validated by the authz server via SPIRE bundles.
+    jwtSvid:
+      allowMissingOrFailed: false
+
   # SPIFFE integration for mTLS with backend
   spiffe:
     enabled: true
@@ -193,6 +198,12 @@ authServer:
     #     provider: "https://spire-oidc-discovery.example.org"
     #     authFamily: "spiffe"
     issuers: []
+
+    # JWT-SVID validation via SPIRE Workload API (federated trust bundles).
+    spiffeJwt:
+      enabled: false
+      socketPath: /run/spire/agent-sockets/api.sock
+      audiences: []
 
     denyList: []
 

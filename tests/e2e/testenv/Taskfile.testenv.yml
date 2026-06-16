@@ -4,13 +4,26 @@
 version: "3"
 
 includes:
-  setup-testenv-k8s:
-    taskfile: ../../modules/Taskfile.setup-testenv-k8s.yml
-    dir: ../../
+  deploy-kind:
+    taskfile: ../../modules/Taskfile.deploy-kind.yml
     internal: true
+
+  deploy-chart:
+    taskfile: ../../modules/Taskfile.deploy-chart.yml
+    internal: true
+
+vars:
+  KIND_CLUSTER_NAME: "oidc-gateway-testenv"
+  KUBE_CONTEXT: 'kind-{{ .KIND_CLUSTER_NAME }}'
+  SETUP_TIMEOUT: '600s'
+
+tasks:
+  up:
+    desc: Create the shared Kind test environment (initial oidc-gateway profile is default)
+    deps:
+      - task: ::build
     vars:
       DIR_VERSION: "v1.4.0"
-      KIND_CLUSTER_NAME: "oidc-gateway-testenv"
       KIND_CONFIG_PATH: "{{.ROOT_DIR}}/tests/e2e/testenv/kind-cluster.yaml"
       KIND_EXTRA_IMAGES: |
         {{ .IMAGE_REPO }}/dir-reconciler:{{.DIR_VERSION}}
@@ -18,6 +31,15 @@ includes:
         {{ .IMAGE_REPO }}/oidc-gateway:{{.IMAGE_TAG}}
       CHART_DEPLOYMENTS: |
         [
+          {
+            "release_name": "spire",
+            "namespace": "spire",
+            "chart_repository": "https://spiffe.github.io/helm-charts-hardened/",
+            "chart_ref": "spire",
+            "chart_version": "0.26.0",
+            "helm_repo_name": "spiffe",
+            "chart_values_path": "{{.ROOT_DIR}}/tests/e2e/testenv/spire-chart-values.yaml"
+          },
           {
             "release_name": "dex",
             "namespace": "dex",
@@ -49,52 +71,112 @@ includes:
             ]
           }
         ]
-
-  deploy-chart:
-    taskfile: ../../modules/Taskfile.deploy-chart.yml
-    internal: true
-
-tasks:
-  up:
-    desc: Create the shared Kind test environment (initial oidc-gateway profile is default)
-    deps:
-      - task: ::build
+      CHART_DEPLOYMENTS_LIST:
+        ref: 'fromJson .CHART_DEPLOYMENTS'
     cmds:
-      - task: setup-testenv-k8s:up
+      - task: deploy-kind:up
+        vars:
+          KIND_CLUSTER_NAME: '{{ .KIND_CLUSTER_NAME }}'
+          KIND_CONFIG_PATH: '{{ .KIND_CONFIG_PATH }}'
+          KIND_EXTRA_IMAGES: '{{ .KIND_EXTRA_IMAGES }}'
+      - task: deploy-chart:up
+        vars:
+          RELEASE_NAME: spire-crds
+          NAMESPACE: spire
+          CHART_REPOSITORY: https://spiffe.github.io/helm-charts-hardened/
+          CHART_REF: spire-crds
+          CHART_VERSION: "0.5.0"
+          HELM_REPO_NAME: spiffe
+          CHART_WAIT: "false"
+          KUBE_CONTEXT: '{{ .KUBE_CONTEXT }}'
+      - for: { var: CHART_DEPLOYMENTS_LIST }
+        task: deploy-chart:up
+        vars:
+          RELEASE_NAME: '{{ .ITEM.release_name }}'
+          NAMESPACE: '{{ .ITEM.namespace }}'
+          CHART_PATH: '{{ .ITEM.chart_path | default "" }}'
+          CHART_REPOSITORY: '{{ .ITEM.chart_repository | default "" }}'
+          CHART_REF: '{{ .ITEM.chart_ref | default "" }}'
+          HELM_REPO_NAME: '{{ .ITEM.helm_repo_name | default "chartrepo" }}'
+          CHART_VERSION: '{{ .ITEM.chart_version | default "" }}'
+          CHART_VALUES_PATH: '{{ .ITEM.chart_values_path | default "" }}'
+          CHART_EXTRA_VALUES: '{{ if .ITEM.chart_extra_values }}{{ .ITEM.chart_extra_values | join "\n" }}{{ end }}'
+          CHART_WAIT: "false"
+          KUBE_CONTEXT: '{{ .KUBE_CONTEXT }}'
+      - for: { var: CHART_DEPLOYMENTS_LIST }
+        cmd: |
+          sleep 10
+          {{ .KUBECTL_BIN | default "kubectl" }} wait --for=condition=ready --timeout={{.SETUP_TIMEOUT}} \
+            pods -n {{ .ITEM.namespace }} \
+            -l app.kubernetes.io/instance={{ .ITEM.release_name }} \
+            --context {{ .KUBE_CONTEXT }}
 
   down:
     desc: Delete the shared Kind test environment
     cmds:
-      - task: setup-testenv-k8s:down
+      - task: deploy-kind:down
+        vars:
+          KIND_CLUSTER_NAME: '{{ .KIND_CLUSTER_NAME }}'
 
-  oidc-gateway:apply:
-    desc: Switch the oidc-gateway Helm release to a profile (helm upgrade)
+  testenv:apply:
+    desc: Apply a profile testenv (Helm chart values + Kubernetes manifests)
     vars:
       PROFILE: '{{ .PROFILE | default "default" }}'
-      KIND_CLUSTER_NAME: "oidc-gateway-testenv"
-      KUBE_CONTEXT: 'kind-{{ .KIND_CLUSTER_NAME }}'
       KUBECTL_BIN: '{{ .KUBECTL_BIN | default "kubectl" }}'
       HELM_BIN: '{{ .HELM_BIN | default "helm" }}'
       SETUP_TIMEOUT: '{{ .SETUP_TIMEOUT | default "60s" }}'
-      CHART_VALUES_PATH: "{{.ROOT_DIR}}/tests/e2e/{{.PROFILE}}/testenv/oidc-gateway-chart-values.yaml"
+      TESTENV_DIR: "{{.ROOT_DIR}}/tests/e2e/{{.PROFILE}}/testenv"
     cmds:
       - |
-        echo "Applying oidc-gateway profile: {{.PROFILE}}"
-      - task: deploy-chart:up
-        vars:
-          HELM_BIN: '{{ .HELM_BIN }}'
-          RELEASE_NAME: oidc-gateway
-          NAMESPACE: oidc-gateway
-          CHART_PATH: "{{.ROOT_DIR}}/install/charts/oidc-gateway"
-          CHART_VALUES_PATH: '{{ .CHART_VALUES_PATH }}'
-          CHART_EXTRA_VALUES: |
-            --set authServer.image.tag={{.IMAGE_TAG}}
-            --set authServer.image.pullPolicy=IfNotPresent
-          CHART_WAIT: "true"
-          KUBE_CONTEXT: '{{ .KUBE_CONTEXT }}'
+        set -euo pipefail
+        echo "Applying testenv profile: {{.PROFILE}} ({{.TESTENV_DIR}})"
+        if [ ! -d "{{.TESTENV_DIR}}" ]; then
+          echo "Testenv directory not found: {{.TESTENV_DIR}}" >&2
+          exit 1
+        fi
+
+        VALUES_FLAGS=""
+        for values_file in "{{.TESTENV_DIR}}"/*chart-values.yaml; do
+          if [ ! -f "${values_file}" ]; then
+            continue
+          fi
+          VALUES_FLAGS="${VALUES_FLAGS} -f ${values_file}"
+        done
+        if [ -z "${VALUES_FLAGS}" ]; then
+          echo "No *chart-values.yaml files found in {{.TESTENV_DIR}}" >&2
+          exit 1
+        fi
+
+        {{ .HELM_BIN }} --kube-context {{ .KUBE_CONTEXT }} upgrade oidc-gateway \
+          "{{.ROOT_DIR}}/install/charts/oidc-gateway" \
+          ${VALUES_FLAGS} \
+          --set authServer.image.tag={{.IMAGE_TAG}} \
+          --set authServer.image.pullPolicy=IfNotPresent \
+          --namespace oidc-gateway \
+          --create-namespace \
+          --install \
+          --wait --wait-for-jobs \
+          --timeout 10m
       - |
         sleep 10
         {{ .KUBECTL_BIN }} wait --for=condition=ready --timeout={{.SETUP_TIMEOUT}} \
           pods -n oidc-gateway \
           -l app.kubernetes.io/instance=oidc-gateway \
           --context {{ .KUBE_CONTEXT }}
+      - |
+        set -euo pipefail
+        applied=false
+        for manifest in "{{.TESTENV_DIR}}"/*.yaml; do
+          case "$(basename "${manifest}")" in
+            *chart-values.yaml) continue ;;
+          esac
+          if [ ! -f "${manifest}" ]; then
+            continue
+          fi
+          echo "Applying manifest: ${manifest}"
+          {{ .KUBECTL_BIN }} apply -f "${manifest}" --context {{ .KUBE_CONTEXT }}
+          applied=true
+        done
+        if [ "${applied}" = true ]; then
+          echo "Profile manifests applied."
+        fi

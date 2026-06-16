@@ -27,17 +27,38 @@ const (
 
 // OIDCAuthorizationServer implements the Envoy ext_authz gRPC API for OIDC.
 // It reads the verified JWT payload from x-jwt-payload, extracts the principal
-// using issuer-specific logic, and enforces Casbin RBAC.
+// using issuer-specific logic, and enforces Casbin RBAC. When configured, it
+// also validates JWT-SVID bearer tokens via the SPIRE Workload API.
 type OIDCAuthorizationServer struct {
 	authv3.UnimplementedAuthorizationServer
 
 	config       *OIDCConfig
 	roleResolver *OIDCRoleResolver
+	jwtValidator JWTValidator
 	logger       *slog.Logger
 }
 
-// NewOIDCAuthorizationServer creates a new OIDC-only authorization server.
-func NewOIDCAuthorizationServer(config *OIDCConfig, logger *slog.Logger) (*OIDCAuthorizationServer, error) {
+// ServerOption configures optional authorization server behavior.
+type ServerOption func(*serverOptions)
+
+type serverOptions struct {
+	jwtValidator JWTValidator
+}
+
+// WithJWTValidator injects a JWT-SVID validator (used in tests).
+func WithJWTValidator(v JWTValidator) ServerOption {
+	return func(o *serverOptions) {
+		o.jwtValidator = v
+	}
+}
+
+// NewOIDCAuthorizationServer creates a new OIDC authorization server.
+func NewOIDCAuthorizationServer(
+	ctx context.Context,
+	config *OIDCConfig,
+	logger *slog.Logger,
+	opts ...ServerOption,
+) (*OIDCAuthorizationServer, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config is required")
 	}
@@ -50,16 +71,47 @@ func NewOIDCAuthorizationServer(config *OIDCConfig, logger *slog.Logger) (*OIDCA
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
+	var options serverOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	jwtValidator := options.jwtValidator
+	if jwtValidator == nil && config.SpiffeJWT.Enabled {
+		var err error
+
+		jwtValidator, err = NewWorkloadJWTValidator(ctx, config.SpiffeJWT.SocketPath, config.SpiffeJWT.Audiences)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create JWT-SVID validator: %w", err)
+		}
+	}
+
 	roleResolver, err := NewOIDCRoleResolver(config, logger)
 	if err != nil {
+		if jwtValidator != nil {
+			_ = jwtValidator.Close()
+		}
+
 		return nil, fmt.Errorf("failed to create role resolver: %w", err)
 	}
 
 	return &OIDCAuthorizationServer{
 		config:       config,
 		roleResolver: roleResolver,
+		jwtValidator: jwtValidator,
 		logger:       logger,
 	}, nil
+}
+
+// Close releases resources held by the authorization server.
+func (s *OIDCAuthorizationServer) Close() error {
+	if s.jwtValidator != nil {
+		if err := s.jwtValidator.Close(); err != nil {
+			return fmt.Errorf("close jwt validator: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // Check implements the ext_authz Check RPC.
@@ -95,16 +147,23 @@ func (s *OIDCAuthorizationServer) Check(ctx context.Context, req *authv3.CheckRe
 		return s.allowResponse(string(principal)), nil
 	}
 
-	// 3. Fallback to bearer token via verified JWT payload from x-jwt-payload.
-	// If no x509 and no bearer -> deny.
+	// 3. Verified OIDC / SPIRE-OIDC JWT payload from Envoy jwt_authn.
 	payloadJSON := getHeader(headers, HeaderJWTPayload)
-	if payloadJSON == "" {
-		s.logger.Warn("missing credentials: neither x509 SPIFFE identity nor verified JWT payload present")
-
-		return s.denyResponse(codes.Unauthenticated, "missing credentials"), nil
+	if payloadJSON != "" {
+		return s.authorizeFromJWTPayload(ctx, path, payloadJSON)
 	}
 
-	// 4. Extract canonical principal (OIDC or SPIFFE JWT-SVID).
+	// 4. JWT-SVID bearer token validated via SPIRE Workload API (federated bundles).
+	if s.jwtValidator != nil {
+		return s.authorizeFromJWTSVID(ctx, path, headers)
+	}
+
+	s.logger.Warn("missing credentials: neither x509 SPIFFE identity nor verified JWT payload present")
+
+	return s.denyResponse(codes.Unauthenticated, "missing credentials"), nil
+}
+
+func (s *OIDCAuthorizationServer) authorizeFromJWTPayload(_ context.Context, path, payloadJSON string) (*authv3.CheckResponse, error) {
 	principal, err := ExtractPrincipal(payloadJSON, s.config)
 	if err != nil {
 		s.logger.Warn("failed to extract principal", "error", err)
@@ -112,7 +171,6 @@ func (s *OIDCAuthorizationServer) Check(ctx context.Context, req *authv3.CheckRe
 		return s.denyResponse(codes.Unauthenticated, "invalid token: "+err.Error()), nil
 	}
 
-	// 5. User deny list -> Deny
 	email := GetEmail(payloadJSON, s.config.Claims.EmailClaimPath)
 	if s.roleResolver.IsDenied(string(principal), email) {
 		s.logger.Info("denied: principal in deny list", "principal", principal)
@@ -120,17 +178,39 @@ func (s *OIDCAuthorizationServer) Check(ctx context.Context, req *authv3.CheckRe
 		return s.denyResponse(codes.PermissionDenied, "principal is in the deny list"), nil
 	}
 
-	// 6. Casbin authorization
-	if err := s.roleResolver.Authorize(string(principal), path); err != nil {
-		s.logger.Info("authorization denied", "principal", principal, "path", path, "reason", err.Error())
+	return s.authorizePrincipal(string(principal), path, "jwt-payload")
+}
+
+func (s *OIDCAuthorizationServer) authorizeFromJWTSVID(ctx context.Context, path string, headers map[string]string) (*authv3.CheckResponse, error) {
+	token := extractBearerToken(headers)
+	if token == "" {
+		s.logger.Warn("missing credentials: JWT-SVID validation enabled but no bearer token present")
+
+		return s.denyResponse(codes.Unauthenticated, "missing credentials"), nil
+	}
+
+	spiffeID, err := s.jwtValidator.ValidateToken(ctx, token)
+	if err != nil {
+		s.logger.Warn("JWT-SVID validation failed", "error", err)
+
+		return s.denyResponse(codes.Unauthenticated, "invalid JWT-SVID: "+err.Error()), nil
+	}
+
+	principal := principalFromSPIFFEID(spiffeID).PrincipalString()
+
+	return s.authorizePrincipal(string(principal), path, "jwt-svid")
+}
+
+func (s *OIDCAuthorizationServer) authorizePrincipal(principal, path, via string) (*authv3.CheckResponse, error) {
+	if err := s.roleResolver.Authorize(principal, path); err != nil {
+		s.logger.Info("authorization denied", "principal", principal, "path", path, "reason", err.Error(), "via", via)
 
 		return s.denyResponse(codes.PermissionDenied, err.Error()), nil
 	}
 
-	// 7. Allow with canonical principal header
-	s.logger.Info("authorization granted", "principal", principal, "path", path)
+	s.logger.Info("authorization granted", "principal", principal, "path", path, "via", via)
 
-	return s.allowResponse(string(principal)), nil
+	return s.allowResponse(principal), nil
 }
 
 func (s *OIDCAuthorizationServer) allowResponse(principal string) *authv3.CheckResponse {
