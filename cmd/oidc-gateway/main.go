@@ -24,6 +24,10 @@ import (
 )
 
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: getLogLevel(),
 	}))
@@ -34,7 +38,8 @@ func main() {
 	oidcConfig, err := loadOIDCConfig(configPath)
 	if err != nil {
 		logger.Error("failed to load OIDC config", "path", configPath, "error", err)
-		os.Exit(1)
+
+		return 1
 	}
 
 	logger.Info("loaded OIDC config",
@@ -43,11 +48,18 @@ func main() {
 		"denyListSize", len(oidcConfig.DenyList),
 	)
 
-	authzServer, err := authzserver.NewOIDCAuthorizationServer(oidcConfig, logger)
+	authzServer, err := authzserver.NewOIDCAuthorizationServer(context.Background(), oidcConfig, logger)
 	if err != nil {
 		logger.Error("failed to create authorization server", "error", err)
-		os.Exit(1)
+
+		return 1
 	}
+
+	defer func() {
+		if err := authzServer.Close(); err != nil {
+			logger.Warn("failed to close authorization server", "error", err)
+		}
+	}()
 
 	grpcServer := grpc.NewServer()
 	authv3.RegisterAuthorizationServer(grpcServer, authzServer)
@@ -60,7 +72,8 @@ func main() {
 		)
 		if err != nil {
 			logger.Error("failed to create rate limit server", "error", err)
-			os.Exit(1)
+
+			return 1
 		}
 
 		ratelimitv3.RegisterRateLimitServiceServer(grpcServer, rateLimitServer)
@@ -76,7 +89,8 @@ func main() {
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", listenAddr)
 	if err != nil {
 		logger.Error("failed to listen", "address", listenAddr, "error", err)
-		os.Exit(1)
+
+		return 1
 	}
 
 	logger.Info("starting OIDC authorization server", "address", listenAddr)
@@ -91,8 +105,11 @@ func main() {
 
 	if err := grpcServer.Serve(listener); err != nil {
 		logger.Error("server error", "error", err)
-		os.Exit(1)
+
+		return 1
 	}
+
+	return 0
 }
 
 func getEnv(key, defaultValue string) string {
