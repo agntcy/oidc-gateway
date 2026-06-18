@@ -23,6 +23,9 @@ includes:
     flatten: true
     excludes: [default]
 
+  tests:
+    taskfile: tests/Taskfile.yml
+
 tasks:
   ##
   ## General

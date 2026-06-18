@@ -191,6 +191,20 @@ jobs:
       image_repo: ghcr.io/agntcy
       image_tag: ${{ github.sha }}
 
+  e2e:
+    name: E2E
+    needs:
+      - changes
+      - build
+    if: needs.changes.outputs.code == 'true'
+    uses: ./.github/workflows/reusable-test-e2e.yaml
+    permissions:
+      contents: read
+      packages: read
+    with:
+      image_repo: ghcr.io/agntcy
+      image_tag: ${{ github.sha }}
+
   push:
     name: Push
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -276,6 +290,7 @@ jobs:
       - license
       - test
       - build
+      - e2e
       - push
       - helm-push-latest
       - tag-on-main

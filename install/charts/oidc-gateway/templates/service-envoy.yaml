@@ -21,6 +21,9 @@ spec:
     targetPort: oidc
     protocol: TCP
     name: oidc
+    {{- if eq .Values.envoy.service.type "NodePort" }}
+    nodePort: {{ .Values.envoy.service.oidcNodePort }}
+    {{- end }}
   {{- end }}
   {{- if .Values.envoy.endpoints.mtls.enabled }}
   - port: {{ default 8443 .Values.envoy.endpoints.mtls.servicePort }}
@@ -33,6 +36,9 @@ spec:
     targetPort: admin
     protocol: TCP
     name: admin
+    {{- if eq .Values.envoy.service.type "NodePort" }}
+    nodePort: {{ .Values.envoy.service.adminNodePort }}
+    {{- end }}
   {{- end }}
   selector:
     {{- include "oidc-gateway.envoySelector" . | nindent 4 }}

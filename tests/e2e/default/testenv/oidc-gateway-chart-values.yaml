@@ -1,0 +1,35 @@
+envoy:
+  service:
+    type: NodePort
+    oidcNodePort: "30080"
+    adminNodePort: "30091"
+  backend:
+    address: dir-apiserver.dir.svc.cluster.local
+    port: 8888
+  spiffe:
+    enabled: false
+  oidc:
+    issuers:
+      - name: dex
+        enabled: true
+        issuer: "http://127.0.0.1:15556/dex"
+        jwksUri: "http://dex.dex.svc.cluster.local:5556/dex/keys"
+        jwksHost: "dex.dex.svc.cluster.local"
+        jwksPort: 5556
+        jwksTls: false
+
+authServer:
+  image:
+    pullPolicy: IfNotPresent
+  oidc:
+    claims:
+      principalClaim: "email"
+    issuers:
+      - providerKey: "dex"
+        provider: "http://127.0.0.1:15556/dex"
+        authFamily: "oidc"
+    roles:
+      admin:
+        allowedMethods: ["*"]
+        principals:
+          - "oidc:dex:admin@example.com"

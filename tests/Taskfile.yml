@@ -1,0 +1,20 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3"
+
+includes:
+  e2e:testenv:default:
+    taskfile: e2e/default/testenv/Taskfile.testenv.yml
+
+tasks:
+  e2e:test:default:
+    desc: Run the E2E test suite
+    silent: true
+    cmds:
+      - defer: { task: e2e:testenv:default:down }
+      - task: e2e:testenv:default:up
+      - |
+        go test -C {{.ROOT_DIR}}/tests/e2e/default . \
+          -v -failfast -test.v -test.paniconexit0 \
+          -timeout 2h -ginkgo.timeout 2h -ginkgo.v

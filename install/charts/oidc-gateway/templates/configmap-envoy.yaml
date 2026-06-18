@@ -15,6 +15,16 @@ SPDX-License-Identifier: Apache-2.0
 {{- if and $tlsEnabled (not $root.Values.envoy.spiffe.enabled) -}}
 {{- fail (printf "Envoy listener %s enables downstream TLS but envoy.spiffe.enabled is false" $name) -}}
 {{- end -}}
+{{/* The enabled OIDC issuers, including GitHub */}}
+{{- $enabledIssuers := list -}}
+{{- range $root.Values.envoy.oidc.issuers -}}
+{{- if .enabled -}}
+{{- $enabledIssuers = append $enabledIssuers .name -}}
+{{- end -}}
+{{- end -}}
+{{- if $root.Values.envoy.oidc.github.enabled -}}
+{{- $enabledIssuers = append $enabledIssuers "github" -}}
+{{- end -}}
 - name: {{ $name }}
   address:
     socket_address:
@@ -232,16 +242,15 @@ SPDX-License-Identifier: Apache-2.0
                     - match:
                         prefix: "/"
                       requires:
+                        {{- if eq (len $enabledIssuers) 1 }}
+                        provider_name: {{ index $enabledIssuers 0 }}
+                        {{- else }}
                         requires_any:
                           requirements:
-                            {{- range $root.Values.envoy.oidc.issuers }}
-                            {{- if .enabled }}
+                            {{- range $enabledIssuers }}
                             - provider_name: {{ .name }}
                             {{- end }}
-                            {{- end }}
-                            {{- if $root.Values.envoy.oidc.github.enabled }}
-                            - provider_name: github
-                            {{- end }}
+                        {{- end }}
               {{- end }}
               # 3. External authorization - OIDC ext_authz (Casbin RBAC)
               - name: envoy.filters.http.ext_authz
@@ -384,12 +393,14 @@ data:
                       address:
                         socket_address:
                           address: {{ .jwksHost }}
-                          port_value: 443
+                          port_value: {{ default 443 .jwksPort }}
+          {{- if default true .jwksTls }}
           transport_socket:
             name: envoy.transport_sockets.tls
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
               sni: {{ .jwksHost }}
+          {{- end }}
         {{- end }}
         {{- end }}
 

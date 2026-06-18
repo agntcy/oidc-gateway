@@ -1,0 +1,64 @@
+# Copyright AGNTCY Contributors (https://github.com/agntcy)
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3"
+
+includes:
+  setup-testenv-k8s:
+    taskfile: ../../../modules/Taskfile.setup-testenv-k8s.yml
+    dir: ../../../
+    internal: true
+    vars:
+      DIR_VERSION: "v1.4.0"
+      KIND_CLUSTER_NAME: "oidc-gateway-testenv"
+      KIND_CONFIG_PATH: "{{.ROOT_DIR}}/tests/e2e/default/testenv/kind-cluster.yaml"
+      KIND_EXTRA_IMAGES: |
+        {{ .IMAGE_REPO }}/dir-reconciler:{{.DIR_VERSION}}
+        {{ .IMAGE_REPO }}/dir-apiserver:{{.DIR_VERSION}}
+        {{ .IMAGE_REPO }}/oidc-gateway:{{.IMAGE_TAG}}
+      CHART_DEPLOYMENTS: |
+        [
+          {
+            "release_name": "dex",
+            "namespace": "dex",
+            "chart_repository": "https://charts.dexidp.io",
+            "chart_ref": "dex",
+            "chart_version": "0.24.1",
+            "helm_repo_name": "dexidp",
+            "chart_values_path": "{{.ROOT_DIR}}/tests/e2e/default/testenv/dex-chart-values.yaml"
+          },
+          {
+            "release_name": "dir",
+            "namespace": "dir",
+            "chart_repository": "oci://ghcr.io/agntcy/dir/helm-charts/dir",
+            "chart_version": "{{.DIR_VERSION}}",
+            "chart_values_path": "{{.ROOT_DIR}}/tests/e2e/default/testenv/dir-chart-values.yaml",
+            "chart_extra_values": [
+              "--set apiserver.image.tag={{.DIR_VERSION}}",
+              "--set apiserver.reconciler.image.tag={{.DIR_VERSION}}"
+            ]
+          },
+          {
+            "release_name": "oidc-gateway",
+            "namespace": "oidc-gateway",
+            "chart_path": "{{.ROOT_DIR}}/install/charts/oidc-gateway",
+            "chart_values_path": "{{.ROOT_DIR}}/tests/e2e/default/testenv/oidc-gateway-chart-values.yaml",
+            "chart_extra_values": [
+              "--set authServer.image.tag={{.IMAGE_TAG}}",
+              "--set authServer.image.pullPolicy=IfNotPresent"
+            ]
+          }
+        ]
+
+tasks:
+  up:
+    desc: Create the test environment
+    deps:
+      - task: ::build
+    cmds:
+      - task: setup-testenv-k8s:up
+
+  down:
+    desc: Delete the test environment
+    cmds:
+      - task: setup-testenv-k8s:down

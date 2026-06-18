@@ -41,12 +41,15 @@ vars:
   # renovate: datasource=github-tags depName=pre-commit/pre-commit versioning=semver
   PRE_COMMIT_VERSION: "4.5.1"
   PRE_COMMIT_PYZ: "{{ .BIN_DIR }}/pre-commit-{{.PRE_COMMIT_VERSION}}.pyz"
+  # renovate: datasource=go depName=sigs.k8s.io/kind versioning=semver
+  KIND_VERSION: "0.31.0"
+  KIND_BIN: "{{ .BIN_DIR }}/kind-{{.KIND_VERSION}}"
 
   ## Go module discovery
   GO_MODULES:
     sh: 'find . -name go.mod -not -path "./tmp*" -exec dirname {} \;'
   GO_MODULES_UNIT_TEST:
-    sh: 'find . -name go.mod -not -path "./tmp*" -exec dirname {} \;'
+    sh: 'find . -name go.mod -not -path "./tmp*" -not -path "./tests/*" -exec dirname {} \;'
 
   ## Coverage
   COVERAGE_DIR: '{{ .COVERAGE_DIR | default (print .ROOT_DIR "/.coverage") }}'

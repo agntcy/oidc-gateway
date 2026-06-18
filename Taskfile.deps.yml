@@ -16,6 +16,7 @@ tasks:
       - task: deps:multimod-bin
       - task: deps:renovate
       - task: deps:pre-commit
+      - task: deps:kind
       - task: deps:cleanup
 
   deps:cleanup:
@@ -28,7 +29,8 @@ tasks:
       {{.GOLANGCI_LINT_BIN}}
       {{.LICENSEI_BIN}}
       {{.MULTIMOD_BIN}}
-      {{.PRE_COMMIT_PYZ}}"
+      {{.PRE_COMMIT_PYZ}}
+      {{.KIND_BIN}}"
 
       echo "Clean up unused/outdated binaries in {{.BIN_DIR}}"
 
@@ -153,3 +155,17 @@ tasks:
         sh: printf '%s' "${RENOVATE_PLATFORM:-local}"
     cmds:
       - renovate {{.RENOVATE_OPTS}} --platform "{{.RENOVATE_PLATFORM_EFFECTIVE}}"
+
+  deps:kind:
+    desc: Ensure supported kind version is installed
+    internal: true
+    deps:
+      - deps:bin-dir
+    preconditions:
+      - which go
+    cmds:
+      - cmd: echo "Downloading Kind v{{.KIND_VERSION}}..."
+      - cmd: GOBIN={{.BIN_DIR}} go install sigs.k8s.io/kind@v{{.KIND_VERSION}}
+      - cmd: mv {{.BIN_DIR}}/kind {{.KIND_BIN}}
+    status:
+      - test -x {{.KIND_BIN}}
