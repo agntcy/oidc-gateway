@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/agntcy/oidc-gateway/authzserver/ratelimit"
 	"github.com/agntcy/oidc-gateway/identity"
 	"golang.org/x/net/http/httpguts"
 )
@@ -17,12 +18,13 @@ const GitHubIssuer = "https://token.actions.githubusercontent.com"
 // OIDCConfig holds the OIDC-based authorization configuration.
 // Roles come only from config; no roles are extracted from JWT claims.
 type OIDCConfig struct {
-	Claims      ClaimsConfig        `yaml:"claims"`
-	Headers     HeadersConfig       `yaml:"headers"`
-	Issuers     []IssuerConfig      `yaml:"issuers"`
-	DenyList    []string            `yaml:"denyList"`
-	PublicPaths []string            `yaml:"publicPaths"`
-	Roles       map[string]OIDCRole `yaml:"roles"`
+	Claims      ClaimsConfig              `yaml:"claims"`
+	Headers     HeadersConfig             `yaml:"headers"`
+	Issuers     []IssuerConfig            `yaml:"issuers"`
+	DenyList    []string                  `yaml:"denyList"`
+	PublicPaths []string                  `yaml:"publicPaths"`
+	Roles       map[string]OIDCRole       `yaml:"roles"`
+	RateLimit   ratelimit.RateLimitConfig `yaml:"ratelimit"`
 }
 
 // ClaimsConfig defines which JWT claims to read.
@@ -78,6 +80,10 @@ func (c *OIDCConfig) Validate() error {
 
 	if err := c.validateRoles(); err != nil {
 		return err
+	}
+
+	if err := c.RateLimit.Validate(); err != nil {
+		return err //nolint:wrapcheck
 	}
 
 	c.normalizePublicPaths()

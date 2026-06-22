@@ -102,26 +102,3 @@ Envoy service account name (for SPIFFE ID)
 {{- define "oidc-gateway.envoyServiceAccountName" -}}
 {{- printf "%s-envoy-gateway" (include "oidc-gateway.fullname" .) }}
 {{- end }}
-
-{{- define "oidc-gateway.envoyLocalRateLimit" -}}
-{{- $key := .key -}}
-{{- $enabled := .enabled -}}
-{{- $bucket := .bucket -}}
-envoy.filters.http.local_ratelimit:
-  "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-  stat_prefix: {{ printf "http_local_rate_limiter_%s" $key | quote }}
-  token_bucket:
-    max_tokens: {{ $bucket.maxTokens }}
-    tokens_per_fill: {{ $bucket.tokensPerFill }}
-    fill_interval: {{ $bucket.fillInterval }}
-  filter_enabled:
-    runtime_key: {{ printf "local_rate_limit_enabled_%s" $key | quote }}
-    default_value:
-      numerator: {{ if $enabled }}100{{ else }}0{{ end }}
-      denominator: HUNDRED
-  filter_enforced:
-    runtime_key: {{ printf "local_rate_limit_enforced_%s" $key | quote }}
-    default_value:
-      numerator: 100
-      denominator: HUNDRED
-{{- end }}

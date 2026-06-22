@@ -70,3 +70,14 @@ data:
       {{- else }}
       {}
       {{- end }}
+
+    ratelimit:
+      domain: {{ .Values.ratelimit.domain | quote }}
+      authenticated:
+        enabled: {{ .Values.ratelimit.authServer.authenticated.enabled }}
+        rps: {{ .Values.ratelimit.authServer.authenticated.rps }}
+        burst: {{ .Values.ratelimit.authServer.authenticated.burst }}
+      anonymous:
+        enabled: {{ .Values.ratelimit.authServer.anonymous.enabled }}
+        rps: {{ .Values.ratelimit.authServer.anonymous.rps }}
+        burst: {{ .Values.ratelimit.authServer.anonymous.burst }}
