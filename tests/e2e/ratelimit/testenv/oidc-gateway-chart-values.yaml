@@ -19,6 +19,15 @@ envoy:
         jwksTls: false
         audiences:
           - oidc-gateway-test
+  ratelimit:
+    global:
+      enabled: true
+      tokenBucket:
+        maxTokens: 1
+        tokensPerFill: 1
+        fillInterval: 1s
+    perClient:
+      enabled: false
 
 authServer:
   image:

@@ -4,17 +4,46 @@
 version: "3"
 
 includes:
-  e2e:testenv:default:
-    taskfile: e2e/default/testenv/Taskfile.testenv.yml
+  e2e:internal:testenv:
+    taskfile: e2e/testenv/Taskfile.testenv.yml
+
+vars:
+  TEST_ENVS:
+    - default
+    - ratelimit
 
 tasks:
-  e2e:test:default:
-    desc: Run the E2E test suite
+  e2e:testenv:up:
+    desc: Set up the test environment
     silent: true
     cmds:
-      - defer: { task: e2e:testenv:default:down }
-      - task: e2e:testenv:default:up
+      - task: e2e:internal:testenv:up
+
+  e2e:testenv:down:
+    desc: Tear down the test environment
+    silent: true
+    cmds:
+      - task: e2e:internal:testenv:down
+
+  e2e:test:
+    desc: Run the E2E tests
+    cmds:
+      - defer: { task: e2e:testenv:down }
+      - task: e2e:testenv:up
+      - for: { var: TEST_ENVS }
+        task: 'e2e:test:{{ .ITEM }}'
+
+  e2e:test:*:
+    desc: Run the E2E tests for given test environment
+    silent: true
+    vars:
+      TEST_ENV: '{{ index .MATCH 0 }}'
+    cmds:
+      - echo "Running E2E tests for {{ .TEST_ENV }}..."
+      - task: e2e:internal:testenv:oidc-gateway:apply
+        vars:
+          PROFILE: '{{ .TEST_ENV }}'
       - |
-        go test -C {{.ROOT_DIR}}/tests/e2e/default . \
+        go test -C {{ .ROOT_DIR }}/tests/e2e/{{ .TEST_ENV }} . \
           -v -failfast -test.v -test.paniconexit0 \
           -timeout 2h -ginkgo.timeout 2h -ginkgo.v

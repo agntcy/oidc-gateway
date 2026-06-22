@@ -1,7 +1,7 @@
 // Copyright AGNTCY Contributors (https://github.com/agntcy)
 // SPDX-License-Identifier: Apache-2.0
 
-package _default
+package ratelimit
 
 import (
 	"context"
@@ -14,12 +14,12 @@ import (
 
 var testConfig *shared.TestConfig
 
-func TestDefaultE2E(t *testing.T) {
+func TestRateLimitE2E(t *testing.T) {
 	gomega.RegisterFailHandler(ginkgo.Fail)
 
 	testConfig = shared.NewTestConfig()
 
-	ginkgo.RunSpecs(t, "Default E2E Suite")
+	ginkgo.RunSpecs(t, "Rate Limit E2E Suite")
 }
 
 var _ = ginkgo.BeforeSuite(func(ctx context.Context) {

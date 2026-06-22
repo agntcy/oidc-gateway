@@ -394,7 +394,11 @@ data:
                         socket_address:
                           address: {{ .jwksHost }}
                           port_value: {{ default 443 .jwksPort }}
-          {{- if default true .jwksTls }}
+          {{- $jwksTls := true -}}
+          {{- if kindIs "bool" .jwksTls -}}
+          {{- $jwksTls = .jwksTls -}}
+          {{- end -}}
+          {{- if $jwksTls }}
           transport_socket:
             name: envoy.transport_sockets.tls
             typed_config:
