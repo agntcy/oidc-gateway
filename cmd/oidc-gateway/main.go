@@ -43,11 +43,17 @@ func main() {
 		"denyListSize", len(oidcConfig.DenyList),
 	)
 
-	authzServer, err := authzserver.NewOIDCAuthorizationServer(oidcConfig, logger)
+	authzServer, err := authzserver.NewOIDCAuthorizationServer(context.Background(), oidcConfig, logger)
 	if err != nil {
 		logger.Error("failed to create authorization server", "error", err)
 		os.Exit(1)
 	}
+
+	defer func() {
+		if err := authzServer.Close(); err != nil {
+			logger.Warn("failed to close authorization server", "error", err)
+		}
+	}()
 
 	grpcServer := grpc.NewServer()
 	authv3.RegisterAuthorizationServer(grpcServer, authzServer)

@@ -1,0 +1,30 @@
+envoy:
+  service:
+    type: NodePort
+    oidcNodePort: "30080"
+    adminNodePort: "30091"
+  backend:
+    address: dir-apiserver.dir.svc.cluster.local
+    port: 8888
+  spiffe:
+    enabled: false
+  oidc:
+    issuers: []
+    jwtSvid:
+      allowMissingOrFailed: true
+
+authServer:
+  image:
+    pullPolicy: IfNotPresent
+  oidc:
+    issuers: []
+    spiffeJwt:
+      enabled: true
+      socketPath: /run/spire/agent-sockets/api.sock
+      audiences:
+        - oidc-gateway
+    roles:
+      admin:
+        allowedMethods: ["*"]
+        principals:
+          - "spiffe:spiffe://example.org/ns/oidc-gateway-test/sa/jwt-svid-e2e-client"

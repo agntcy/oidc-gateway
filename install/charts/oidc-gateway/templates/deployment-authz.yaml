@@ -53,10 +53,19 @@ spec:
             configMapKeyRef:
               name: {{ include "oidc-gateway.fullname" . }}-authz-config
               key: CONFIG_PATH
+        {{- if .Values.authServer.oidc.spiffeJwt.enabled }}
+        - name: SPIFFE_ENDPOINT_SOCKET
+          value: {{ printf "unix:%s" .Values.authServer.oidc.spiffeJwt.socketPath | quote }}
+        {{- end }}
         volumeMounts:
         - name: oidc-config
           mountPath: /etc/oidc-gateway
           readOnly: true
+        {{- if .Values.authServer.oidc.spiffeJwt.enabled }}
+        - name: spiffe-workload-api
+          mountPath: /run/spire/agent-sockets
+          readOnly: true
+        {{- end }}
         resources:
           {{- toYaml .Values.authServer.resources | nindent 10 }}
       volumes:
@@ -66,3 +75,9 @@ spec:
           items:
           - key: config.yaml
             path: config.yaml
+      {{- if .Values.authServer.oidc.spiffeJwt.enabled }}
+      - name: spiffe-workload-api
+        csi:
+          driver: csi.spiffe.io
+          readOnly: true
+      {{- end }}

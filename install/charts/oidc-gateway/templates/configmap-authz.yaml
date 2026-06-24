@@ -36,6 +36,18 @@ data:
       []
       {{- end }}
 
+    spiffeJwt:
+      enabled: {{ .Values.authServer.oidc.spiffeJwt.enabled }}
+      socketPath: {{ .Values.authServer.oidc.spiffeJwt.socketPath | quote }}
+      audiences:
+        {{- if .Values.authServer.oidc.spiffeJwt.audiences }}
+        {{- range .Values.authServer.oidc.spiffeJwt.audiences }}
+        - {{ . | quote }}
+        {{- end }}
+        {{- else }}
+        []
+        {{- end }}
+
     denyList:
       {{- if .Values.authServer.oidc.denyList }}
       {{- range .Values.authServer.oidc.denyList }}

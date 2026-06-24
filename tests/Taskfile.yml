@@ -11,6 +11,7 @@ vars:
   TEST_ENVS:
     - default
     - ratelimit
+    - jwt-svid
 
 tasks:
   e2e:testenv:up:
@@ -33,6 +34,14 @@ tasks:
       - for: { var: TEST_ENVS }
         task: 'e2e:test:{{ .ITEM }}'
 
+  e2e:testenv:apply:
+    desc: Apply a profile testenv (Helm chart values + Kubernetes manifests)
+    silent: true
+    cmds:
+      - task: e2e:internal:testenv:testenv:apply
+        vars:
+          PROFILE: '{{ .PROFILE | default "default" }}'
+
   e2e:test:*:
     desc: Run the E2E tests for given test environment
     silent: true
@@ -40,7 +49,7 @@ tasks:
       TEST_ENV: '{{ index .MATCH 0 }}'
     cmds:
       - echo "Running E2E tests for {{ .TEST_ENV }}..."
-      - task: e2e:internal:testenv:oidc-gateway:apply
+      - task: e2e:internal:testenv:testenv:apply
         vars:
           PROFILE: '{{ .TEST_ENV }}'
       - |

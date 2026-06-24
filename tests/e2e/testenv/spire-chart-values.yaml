@@ -1,0 +1,5 @@
+# SPIRE stack for JWT-SVID E2E tests (trust domain must match oidc-gateway chart defaults).
+global:
+  spire:
+    clusterName: oidc-gateway-testenv
+    trustDomain: example.org

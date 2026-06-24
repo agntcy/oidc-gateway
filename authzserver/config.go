@@ -21,10 +21,20 @@ type OIDCConfig struct {
 	Claims      ClaimsConfig              `yaml:"claims"`
 	Headers     HeadersConfig             `yaml:"headers"`
 	Issuers     []IssuerConfig            `yaml:"issuers"`
+	SpiffeJWT   SpiffeJWTConfig           `yaml:"spiffeJwt"`
 	DenyList    []string                  `yaml:"denyList"`
 	PublicPaths []string                  `yaml:"publicPaths"`
 	Roles       map[string]OIDCRole       `yaml:"roles"`
 	RateLimit   ratelimit.RateLimitConfig `yaml:"ratelimit"`
+}
+
+// SpiffeJWTConfig enables JWT-SVID validation via the SPIRE Workload API.
+// When enabled, bearer tokens that Envoy jwt_authn cannot verify (e.g. federated
+// JWT-SVIDs) are cryptographically validated here using local + federated bundles.
+type SpiffeJWTConfig struct {
+	Enabled    bool     `yaml:"enabled"`
+	SocketPath string   `yaml:"socketPath"`
+	Audiences  []string `yaml:"audiences"`
 }
 
 // ClaimsConfig defines which JWT claims to read.
@@ -79,6 +89,10 @@ func (c *OIDCConfig) Validate() error {
 	}
 
 	if err := c.validateRoles(); err != nil {
+		return err
+	}
+
+	if err := c.validateSpiffeJWT(); err != nil {
 		return err
 	}
 
@@ -139,6 +153,28 @@ func (c *OIDCConfig) validateIssuers() error {
 
 		if ic.AuthFamily != string(identity.AuthFamilySPIFFE) && ic.ProviderKey == "" {
 			return fmt.Errorf("issuers[%q].providerKey is required for oidc auth family", ic.Provider)
+		}
+	}
+
+	return nil
+}
+
+func (c *OIDCConfig) validateSpiffeJWT() error {
+	if !c.SpiffeJWT.Enabled {
+		return nil
+	}
+
+	if strings.TrimSpace(c.SpiffeJWT.SocketPath) == "" {
+		return fmt.Errorf("spiffeJwt.socketPath is required when spiffeJwt.enabled is true")
+	}
+
+	if len(c.SpiffeJWT.Audiences) == 0 {
+		return fmt.Errorf("spiffeJwt.audiences must contain at least one entry when spiffeJwt.enabled is true")
+	}
+
+	for i, aud := range c.SpiffeJWT.Audiences {
+		if strings.TrimSpace(aud) == "" {
+			return fmt.Errorf("spiffeJwt.audiences[%d] must not be empty", i)
 		}
 	}
 
