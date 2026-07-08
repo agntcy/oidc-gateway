@@ -197,6 +197,32 @@ func TestOIDCConfig_Validate(t *testing.T) {
 			expectError: true,
 			errorMsg:    "audiences",
 		},
+		{
+			name: "spiffeJwt socketPath with surrounding whitespace",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.SpiffeJWT.Enabled = true
+				cfg.SpiffeJWT.SocketPath = " /run/spire/agent-sockets/api.sock "
+				cfg.SpiffeJWT.Audiences = []string{"oidc-gateway"}
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "socketPath",
+		},
+		{
+			name: "spiffeJwt audience with surrounding whitespace",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.SpiffeJWT.Enabled = true
+				cfg.SpiffeJWT.SocketPath = "/run/spire/agent-sockets/api.sock"
+				cfg.SpiffeJWT.Audiences = []string{" oidc-gateway "}
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "audiences",
+		},
 	}
 
 	for _, tt := range tests {

@@ -13,7 +13,10 @@ import (
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
-const authorizationHeader = "authorization"
+const (
+	authorizationHeader      = "authorization"
+	authorizationHeaderParts = 2
+)
 
 // JWTValidator validates JWT-SVID bearer tokens using SPIRE federation bundles.
 type JWTValidator interface {
@@ -29,12 +32,23 @@ type WorkloadJWTValidator struct {
 
 // NewWorkloadJWTValidator creates a validator backed by the SPIRE Workload API.
 func NewWorkloadJWTValidator(ctx context.Context, socketPath string, audiences []string) (*WorkloadJWTValidator, error) {
+	socketPath = strings.TrimSpace(socketPath)
 	if socketPath == "" {
 		return nil, fmt.Errorf("spiffeJwt.socketPath is required")
 	}
 
 	if len(audiences) == 0 {
 		return nil, fmt.Errorf("spiffeJwt.audiences must contain at least one entry")
+	}
+
+	normalizedAudiences := make([]string, 0, len(audiences))
+	for i, audience := range audiences {
+		trimmed := strings.TrimSpace(audience)
+		if trimmed == "" {
+			return nil, fmt.Errorf("spiffeJwt.audiences[%d] must not be empty", i)
+		}
+
+		normalizedAudiences = append(normalizedAudiences, trimmed)
 	}
 
 	addr := socketPath
@@ -49,25 +63,18 @@ func NewWorkloadJWTValidator(ctx context.Context, socketPath string, audiences [
 
 	return &WorkloadJWTValidator{
 		source:    source,
-		audiences: audiences,
+		audiences: normalizedAudiences,
 	}, nil
 }
 
 // ValidateToken parses and validates a JWT-SVID, returning the SPIFFE ID string.
 func (v *WorkloadJWTValidator) ValidateToken(_ context.Context, token string) (string, error) {
-	var (
-		svid    *jwtsvid.SVID
-		lastErr error
-	)
-
-	for _, audience := range v.audiences {
-		svid, lastErr = jwtsvid.ParseAndValidate(token, v.source, []string{audience})
-		if lastErr == nil {
-			return svid.ID.String(), nil
-		}
+	svid, err := jwtsvid.ParseAndValidate(token, v.source, v.audiences)
+	if err != nil {
+		return "", fmt.Errorf("validate JWT-SVID: %w", err)
 	}
 
-	return "", fmt.Errorf("validate JWT-SVID: %w", lastErr)
+	return svid.ID.String(), nil
 }
 
 // Close releases the underlying Workload API client.
@@ -82,15 +89,21 @@ func (v *WorkloadJWTValidator) Close() error {
 }
 
 func extractBearerToken(headers map[string]string) string {
-	auth := getHeader(headers, authorizationHeader)
-
-	const prefix = "Bearer "
-
-	if !strings.HasPrefix(auth, prefix) {
+	auth := strings.TrimSpace(getHeader(headers, authorizationHeader))
+	if auth == "" {
 		return ""
 	}
 
-	return strings.TrimSpace(auth[len(prefix):])
+	parts := strings.Fields(auth)
+	if len(parts) != authorizationHeaderParts {
+		return ""
+	}
+
+	if !strings.EqualFold(parts[0], "Bearer") {
+		return ""
+	}
+
+	return parts[1]
 }
 
 func principalFromSPIFFEID(spiffeID string) identity.Identity {

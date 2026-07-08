@@ -164,8 +164,13 @@ func (c *OIDCConfig) validateSpiffeJWT() error {
 		return nil
 	}
 
-	if strings.TrimSpace(c.SpiffeJWT.SocketPath) == "" {
+	socketPath := strings.TrimSpace(c.SpiffeJWT.SocketPath)
+	if socketPath == "" {
 		return fmt.Errorf("spiffeJwt.socketPath is required when spiffeJwt.enabled is true")
+	}
+
+	if socketPath != c.SpiffeJWT.SocketPath {
+		return fmt.Errorf("spiffeJwt.socketPath must not contain leading or trailing whitespace")
 	}
 
 	if len(c.SpiffeJWT.Audiences) == 0 {
@@ -173,8 +178,13 @@ func (c *OIDCConfig) validateSpiffeJWT() error {
 	}
 
 	for i, aud := range c.SpiffeJWT.Audiences {
-		if strings.TrimSpace(aud) == "" {
+		trimmed := strings.TrimSpace(aud)
+		if trimmed == "" {
 			return fmt.Errorf("spiffeJwt.audiences[%d] must not be empty", i)
+		}
+
+		if trimmed != aud {
+			return fmt.Errorf("spiffeJwt.audiences[%d] must not contain leading or trailing whitespace", i)
 		}
 	}
 
