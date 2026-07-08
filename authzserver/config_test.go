@@ -173,6 +173,56 @@ func TestOIDCConfig_Validate(t *testing.T) {
 			expectError: true,
 			errorMsg:    "invalid github workflow wildcard",
 		},
+		{
+			name: "spiffeJwt enabled without socketPath",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.SpiffeJWT.Enabled = true
+				cfg.SpiffeJWT.Audiences = []string{"spiffe://example.org"}
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "socketPath",
+		},
+		{
+			name: "spiffeJwt enabled without audiences",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.SpiffeJWT.Enabled = true
+				cfg.SpiffeJWT.SocketPath = "/run/spire/agent-sockets/api.sock"
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "audiences",
+		},
+		{
+			name: "spiffeJwt socketPath with surrounding whitespace",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.SpiffeJWT.Enabled = true
+				cfg.SpiffeJWT.SocketPath = " /run/spire/agent-sockets/api.sock "
+				cfg.SpiffeJWT.Audiences = []string{"oidc-gateway"}
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "socketPath",
+		},
+		{
+			name: "spiffeJwt audience with surrounding whitespace",
+			config: func() *OIDCConfig {
+				cfg := validConfig()
+				cfg.SpiffeJWT.Enabled = true
+				cfg.SpiffeJWT.SocketPath = "/run/spire/agent-sockets/api.sock"
+				cfg.SpiffeJWT.Audiences = []string{" oidc-gateway "}
+
+				return cfg
+			}(),
+			expectError: true,
+			errorMsg:    "audiences",
+		},
 	}
 
 	for _, tt := range tests {

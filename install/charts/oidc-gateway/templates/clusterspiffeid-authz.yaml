@@ -1,0 +1,26 @@
+{{/*
+Copyright AGNTCY Contributors (https://github.com/agntcy)
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{- if .Values.authServer.oidc.spiffeJwt.enabled }}
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: {{ include "oidc-gateway.fullname" . }}-authz-server
+spec:
+  {{- if and .Values.envoy.spiffe.className (ne .Values.envoy.spiffe.className "none") }}
+  className: {{ .Values.envoy.spiffe.className }}
+  {{- end }}
+  {{- with .Values.envoy.spiffe.namespaceSelector }}
+  namespaceSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  spiffeIDTemplate: "spiffe://{{ .Values.envoy.spiffe.trustDomain }}/ns/{{ .Release.Namespace }}/sa/{{ include "oidc-gateway.serviceAccountName" . }}"
+  podSelector:
+    matchLabels:
+      {{- include "oidc-gateway.authzSelector" . | nindent 6 }}
+  workloadSelectorTemplates:
+    - "k8s:ns:{{ .Release.Namespace }}"
+    - "k8s:sa:{{ include "oidc-gateway.serviceAccountName" . }}"
+{{- end }}

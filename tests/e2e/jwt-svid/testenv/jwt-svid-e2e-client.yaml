@@ -1,0 +1,60 @@
+# Test workload registered with SPIRE for fetching JWT-SVIDs in E2E tests.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: oidc-gateway-test
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jwt-svid-e2e-client
+  namespace: oidc-gateway-test
+---
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: jwt-svid-e2e-client
+spec:
+  className: spire
+  spiffeIDTemplate: "spiffe://example.org/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      app: jwt-svid-e2e-client
+  workloadSelectorTemplates:
+    - "k8s:ns:oidc-gateway-test"
+    - "k8s:sa:jwt-svid-e2e-client"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jwt-svid-e2e-client
+  namespace: oidc-gateway-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jwt-svid-e2e-client
+  template:
+    metadata:
+      labels:
+        app: jwt-svid-e2e-client
+    spec:
+      serviceAccountName: jwt-svid-e2e-client
+      containers:
+        - name: client
+          image: ghcr.io/spiffe/spire-agent:1.12.4
+          command: ["/opt/spire/bin/spire-agent"]
+          args:
+            - api
+            - watch
+            - -socketPath
+            - /run/spire/agent-sockets/api.sock
+          volumeMounts:
+            - name: spiffe-workload-api
+              mountPath: /run/spire/agent-sockets
+              readOnly: true
+      volumes:
+        - name: spiffe-workload-api
+          csi:
+            driver: csi.spiffe.io
+            readOnly: true
