@@ -23,4 +23,8 @@ spec:
   workloadSelectorTemplates:
     - "k8s:ns:{{ .Release.Namespace }}"
     - "k8s:sa:{{ include "oidc-gateway.serviceAccountName" . }}"
+  {{- with .Values.authServer.oidc.spiffeJwt.federatesWith }}
+  federatesWith:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end }}

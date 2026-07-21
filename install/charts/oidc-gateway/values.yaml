@@ -204,6 +204,11 @@ authServer:
       enabled: false
       socketPath: /run/spire/agent-sockets/api.sock
       audiences: []
+      # Foreign trust domains whose JWT bundles the authz server must receive so
+      # it can validate federated JWT-SVIDs issued by those domains. Each entry
+      # requires a matching ClusterFederatedTrustDomain on the SPIRE server.
+      # Rendered onto the authz-server ClusterSPIFFEID.
+      federatesWith: []
 
     denyList: []
 
