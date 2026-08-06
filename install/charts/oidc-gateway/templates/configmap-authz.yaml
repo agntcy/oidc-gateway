@@ -21,6 +21,7 @@ data:
     claims:
       principalClaim: {{ .Values.authServer.oidc.claims.principalClaim | quote }}
       emailClaimPath: {{ .Values.authServer.oidc.claims.emailClaimPath | quote }}
+      groupsClaimPath: {{ .Values.authServer.oidc.claims.groupsClaimPath | quote }}
 
     headers:
       authPrincipal: {{ default "x-auth-principal" .Values.authServer.oidc.headers.authPrincipal | quote }}

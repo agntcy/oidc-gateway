@@ -171,14 +171,48 @@ func (s *OIDCAuthorizationServer) authorizeFromJWTPayload(_ context.Context, pat
 		return s.denyResponse(codes.Unauthenticated, "invalid token: "+err.Error()), nil
 	}
 
+	groupPrincipals, err := ExtractGroupPrincipals(payloadJSON, s.config, s.logger)
+	if err != nil {
+		s.logger.Warn("failed to extract group principals", "error", err)
+
+		return s.denyResponse(codes.Unauthenticated, "invalid token: "+err.Error()), nil
+	}
+
+	subjects := append([]string{string(principal)}, groupPrincipalStrings(groupPrincipals)...)
+
 	email := GetEmail(payloadJSON, s.config.Claims.EmailClaimPath)
-	if s.roleResolver.IsDenied(string(principal), email) {
+	if s.roleResolver.IsDeniedSubjects(subjects, email) {
 		s.logger.Info("denied: principal in deny list", "principal", principal)
 
 		return s.denyResponse(codes.PermissionDenied, "principal is in the deny list"), nil
 	}
 
-	return s.authorizePrincipal(string(principal), path, "jwt-payload")
+	matched, err := s.roleResolver.AuthorizeAny(subjects, path)
+	if err != nil {
+		s.logger.Info("authorization denied", "principal", principal, "path", path, "reason", err.Error(), "via", "jwt-payload")
+
+		return s.denyResponse(codes.PermissionDenied, err.Error()), nil
+	}
+
+	via := "jwt-payload"
+	if matched != string(principal) {
+		via = "jwt-payload-group"
+	}
+
+	s.logger.Info("authorization granted", "principal", principal, "path", path, "via", via, "matchedSubject", matched)
+
+	return s.allowResponse(string(principal)), nil
+}
+
+func groupPrincipalStrings(principals []identity.IdentityPrincipal) []string {
+	out := make([]string, 0, len(principals))
+	for _, p := range principals {
+		if p != "" {
+			out = append(out, string(p))
+		}
+	}
+
+	return out
 }
 
 func (s *OIDCAuthorizationServer) authorizeFromJWTSVID(ctx context.Context, path string, headers map[string]string) (*authv3.CheckResponse, error) {

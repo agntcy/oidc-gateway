@@ -179,6 +179,7 @@ authServer:
     claims:
       principalClaim: "sub"
       emailClaimPath: "email"
+      groupsClaimPath: "groups"
 
     # Header emitted by ext_authz and stripped from client requests by Envoy.
     headers:
@@ -217,7 +218,7 @@ authServer:
       - "/grpc.reflection"
 
     roles:
-      # Example admin: principals: ["oidc:dex:admin@example.com"]
+      # Example admin: principals: ["oidc:dex:admin@example.com", "oidc:dex:group:admins"]
       admin:
         allowedMethods: ["*"]
         principals: []
@@ -227,6 +228,7 @@ authServer:
       #     - "/example.service.v1.ExampleService/Read"
       #   principals:
       #     - "oidc:dex:viewer@example.com"
+      #     - "oidc:dex:group:viewers"
       # Example GitHub Actions workflow identity:
       # deployer:
       #   allowedMethods: ["*"]

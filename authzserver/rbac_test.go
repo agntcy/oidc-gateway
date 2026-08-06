@@ -279,6 +279,40 @@ func TestOIDCRoleResolver_Authorize(t *testing.T) {
 	}
 }
 
+func TestOIDCRoleResolver_AuthorizeAny_GroupPrincipal(t *testing.T) {
+	config := &OIDCConfig{
+		Claims: ClaimsConfig{PrincipalClaim: "email"},
+		Roles: map[string]OIDCRole{
+			"editors": {
+				AllowedMethods: []string{"/api/read"},
+				Principals:     []string{"oidc:dex:group:editors"},
+			},
+		},
+	}
+	config.PublicPaths = []string{"/healthz"}
+
+	if err := config.Validate(); err != nil {
+		t.Fatalf("invalid config: %v", err)
+	}
+
+	resolver, err := NewOIDCRoleResolver(config, slog.Default())
+	if err != nil {
+		t.Fatalf("NewOIDCRoleResolver: %v", err)
+	}
+
+	matched, err := resolver.AuthorizeAny([]string{
+		"oidc:dex:alice@example.com",
+		"oidc:dex:group:editors",
+	}, "/api/read")
+	if err != nil {
+		t.Fatalf("AuthorizeAny: %v", err)
+	}
+
+	if matched != "oidc:dex:group:editors" {
+		t.Fatalf("matched = %q", matched)
+	}
+}
+
 func TestOIDCRoleResolver_IsDenied(t *testing.T) {
 	config := &OIDCConfig{
 		Claims:   ClaimsConfig{PrincipalClaim: "sub"},

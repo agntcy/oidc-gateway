@@ -14,6 +14,8 @@ import (
 
 const testPayloadAdmin = `{"iss":"https://dex.example.com","sub":"CgcyMzQyNzQ5EgZnaXRodWI","email":"admin@example.com"}`
 
+const testPayloadEditorGroup = `{"iss":"https://dex.example.com","email":"alice@example.com","groups":["editors"]}`
+
 func makeCheckRequest(path string, headers map[string]string) *authv3.CheckRequest {
 	if headers == nil {
 		headers = make(map[string]string)
@@ -93,7 +95,7 @@ func TestNewOIDCAuthorizationServer(t *testing.T) {
 	})
 }
 
-//nolint:gocognit,cyclop // Test function with multiple subtests; high complexity is acceptable.
+//nolint:gocognit,cyclop,gocyclo,maintidx // Test function with multiple subtests; high complexity is acceptable.
 func TestOIDCAuthorizationServer_Check(t *testing.T) {
 	config := validOIDCConfig()
 	ctx := t.Context()
@@ -187,6 +189,42 @@ func TestOIDCAuthorizationServer_Check(t *testing.T) {
 
 		if headers[0].GetHeader().GetKey() != HeaderAuthPrincipal {
 			t.Fatalf("expected %s header, got %s", HeaderAuthPrincipal, headers[0].GetHeader().GetKey())
+		}
+	})
+
+	t.Run("group membership authorizes user principal header", func(t *testing.T) {
+		cfg := validOIDCConfig()
+		cfg.Claims.GroupsClaimPath = "groups"
+		cfg.Roles = map[string]OIDCRole{
+			"editors": {
+				AllowedMethods: []string{"*"},
+				Principals:     []string{"oidc:dex:group:editors"},
+			},
+		}
+
+		srv2, err := NewOIDCAuthorizationServer(ctx, cfg, slog.Default())
+		if err != nil {
+			t.Fatalf("failed to create server: %v", err)
+		}
+
+		req := makeCheckRequest("/api/test", map[string]string{HeaderJWTPayload: testPayloadEditorGroup})
+
+		resp, err := srv2.Check(ctx, req)
+		if err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+
+		if resp.GetStatus().GetCode() != int32(codes.OK) {
+			t.Errorf("expected OK, got code %d message %q", resp.GetStatus().GetCode(), resp.GetStatus().GetMessage())
+		}
+
+		okResp := resp.GetOkResponse()
+		if okResp == nil {
+			t.Fatal("expected OkResponse")
+		}
+
+		if got := okResp.GetHeaders()[0].GetHeader().GetValue(); got != "oidc:dex:alice@example.com" {
+			t.Fatalf("x-auth-principal = %q", got)
 		}
 	})
 
