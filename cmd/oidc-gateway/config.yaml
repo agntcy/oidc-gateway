@@ -5,6 +5,7 @@
 claims:
   principalClaim: "sub"
   emailClaimPath: "email"
+  groupsClaimPath: "groups"
 
 headers:
   authPrincipal: "x-auth-principal"

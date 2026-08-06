@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"reflect"
 	"strings"
 
 	"github.com/agntcy/oidc-gateway/identity"
@@ -127,6 +129,182 @@ func ExtractPrincipal(payloadJSON string, config *OIDCConfig) (identity.Identity
 	}
 
 	return normalized.PrincipalString(), nil
+}
+
+const maxGroupNameLen = 256
+
+// ExtractGroupPrincipals builds canonical group principals oidc:<providerKey>:group:<name>
+// from the JWT claim at config.Claims.GroupsClaimPath. Returns nil when groupsClaimPath is unset.
+// Malformed group claims (wrong JSON type or non-string array elements) are ignored.
+//
+//nolint:cyclop
+func ExtractGroupPrincipals(payloadJSON string, config *OIDCConfig, logger *slog.Logger) ([]identity.IdentityPrincipal, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config is required")
+	}
+
+	groupsPath := strings.TrimSpace(config.Claims.GroupsClaimPath)
+	if groupsPath == "" {
+		return nil, nil
+	}
+
+	raw, err := parsePayloadJSON(payloadJSON)
+	if err != nil {
+		return nil, err
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("invalid JWT payload JSON: %w", err)
+	}
+
+	iss := getString(payload, "iss")
+	if iss == "" {
+		return nil, fmt.Errorf("missing iss claim")
+	}
+
+	issuerCfg := config.GetIssuerConfig(iss)
+	if issuerCfg == nil {
+		return nil, fmt.Errorf("issuer %q is not configured", iss)
+	}
+
+	if issuerCfg.AuthFamily == string(identity.AuthFamilySPIFFE) {
+		return nil, nil
+	}
+
+	if issuerCfg.Provider == GitHubIssuer || issuerCfg.ProviderKey == "github" {
+		return nil, nil
+	}
+
+	if issuerCfg.ProviderKey == "" {
+		return nil, fmt.Errorf("providerKey is required for issuer %q", iss)
+	}
+
+	groupNames := stringSliceAtClaimPath(logger, payload, groupsPath)
+
+	seen := make(map[string]struct{}, len(groupNames))
+	out := make([]identity.IdentityPrincipal, 0, len(groupNames))
+
+	for _, name := range groupNames {
+		safe, ok := sanitizeGroupName(name)
+		if !ok {
+			if logger != nil {
+				logger.Warn("ignored invalid group name in groups claim",
+					"claimPath", groupsPath,
+					"group", truncateForLog(name),
+				)
+			}
+
+			continue
+		}
+
+		if _, dup := seen[safe]; dup {
+			continue
+		}
+
+		seen[safe] = struct{}{}
+
+		normalized := identity.Identity{
+			AuthFamily: identity.AuthFamilyOIDC,
+			Principal:  fmt.Sprintf("%s:group:%s", issuerCfg.ProviderKey, safe),
+		}
+
+		if err := normalized.Validate(); err != nil {
+			if logger != nil {
+				logger.Warn("ignored group name that failed principal validation",
+					"claimPath", groupsPath,
+					"group", safe,
+					"error", err.Error(),
+				)
+			}
+
+			continue
+		}
+
+		out = append(out, normalized.PrincipalString())
+	}
+
+	return out, nil
+}
+
+func sanitizeGroupName(name string) (string, bool) {
+	s := strings.TrimSpace(name)
+	if s == "" || len(s) > maxGroupNameLen {
+		return "", false
+	}
+
+	if strings.ContainsAny(s, "\r\n\x00") {
+		return "", false
+	}
+
+	return s, true
+}
+
+func stringSliceAtClaimPath(logger *slog.Logger, payload map[string]any, claimPath string) []string {
+	v := getNestedValue(payload, strings.Split(claimPath, "."))
+	if v == nil {
+		return nil
+	}
+
+	switch t := v.(type) {
+	case string:
+		if strings.TrimSpace(t) == "" {
+			return nil
+		}
+
+		return []string{t}
+	case []any:
+		return stringsFromSliceAny(logger, claimPath, t)
+	case []string:
+		return t
+	default:
+		if logger != nil {
+			logger.Warn("ignoring groups claim with unsupported JSON type",
+				"claimPath", claimPath,
+				"type", reflect.TypeOf(v).String(),
+			)
+		}
+
+		return nil
+	}
+}
+
+func stringsFromSliceAny(logger *slog.Logger, claimPath string, items []any) []string {
+	out := make([]string, 0, len(items))
+	skipped := 0
+
+	for _, item := range items {
+		s, ok := item.(string)
+		if !ok {
+			skipped++
+
+			continue
+		}
+
+		out = append(out, s)
+	}
+
+	if skipped > 0 && logger != nil {
+		logger.Warn("ignored non-string elements in groups claim array",
+			"claimPath", claimPath,
+			"skipped", skipped,
+		)
+	}
+
+	return out
+}
+
+const maxGroupNameLogLen = 64
+
+func truncateForLog(s string) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	s = strings.ReplaceAll(s, "\r", "")
+
+	if len(s) <= maxGroupNameLogLen {
+		return s
+	}
+
+	return s[:maxGroupNameLogLen] + "..."
 }
 
 func extractOIDCPrincipal(payload map[string]any, principalClaim string) (string, error) {

@@ -64,8 +64,15 @@ func NewOIDCRoleResolver(config *OIDCConfig, logger *slog.Logger) (*OIDCRoleReso
 
 // IsDenied returns true if the principal or oidc:email is in the deny list.
 func (r *OIDCRoleResolver) IsDenied(principal, email string) bool {
-	if r.isPrincipalDenied(principal) {
-		return true
+	return r.IsDeniedSubjects([]string{principal}, email)
+}
+
+// IsDeniedSubjects returns true if any subject or oidc:email is in the deny list.
+func (r *OIDCRoleResolver) IsDeniedSubjects(subjects []string, email string) bool {
+	for _, principal := range subjects {
+		if principal != "" && r.isPrincipalDenied(principal) {
+			return true
+		}
 	}
 
 	if email != "" {
@@ -81,27 +88,46 @@ func (r *OIDCRoleResolver) IsDenied(principal, email string) bool {
 // Authorize checks if the principal is authorized to access the API method.
 // Returns nil if allowed, error if denied.
 func (r *OIDCRoleResolver) Authorize(principal, path string) error {
-	allowed, err := r.enforcer.Enforce(principal, path, "access")
-	if err != nil {
-		r.logger.Error("Casbin enforcement error",
-			"principal", principal,
-			"path", path,
-			"error", err,
-		)
+	_, err := r.AuthorizeAny([]string{principal}, path)
 
-		return fmt.Errorf("authorization check failed: %w", err)
+	return err
+}
+
+// AuthorizeAny checks if any subject is authorized to access the API method.
+// Returns the matching subject when allowed.
+func (r *OIDCRoleResolver) AuthorizeAny(subjects []string, path string) (string, error) {
+	for _, principal := range subjects {
+		if principal == "" {
+			continue
+		}
+
+		allowed, err := r.enforcer.Enforce(principal, path, "access")
+		if err != nil {
+			r.logger.Error("Casbin enforcement error",
+				"principal", principal,
+				"path", path,
+				"error", err,
+			)
+
+			return "", fmt.Errorf("authorization check failed: %w", err)
+		}
+
+		if allowed {
+			r.logger.Debug("authorized",
+				"principal", principal,
+				"path", path,
+			)
+
+			return principal, nil
+		}
 	}
 
-	if allowed {
-		r.logger.Debug("authorized",
-			"principal", principal,
-			"path", path,
-		)
-
-		return nil
+	primary := ""
+	if len(subjects) > 0 {
+		primary = subjects[0]
 	}
 
-	return fmt.Errorf("principal %q is not authorized for %s", principal, path)
+	return "", fmt.Errorf("principal %q is not authorized for %s", primary, path)
 }
 
 // isPrincipalDenied checks if the principal is in the deny list.

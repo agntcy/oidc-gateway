@@ -39,8 +39,9 @@ type SpiffeJWTConfig struct {
 
 // ClaimsConfig defines which JWT claims to read.
 type ClaimsConfig struct {
-	PrincipalClaim string `yaml:"principalClaim"` // e.g. "sub"
-	EmailClaimPath string `yaml:"emailClaimPath"` // optional; for deny-list email matching
+	PrincipalClaim  string `yaml:"principalClaim"`  // e.g. "sub"
+	EmailClaimPath  string `yaml:"emailClaimPath"`  // optional; for deny-list email matching
+	GroupsClaimPath string `yaml:"groupsClaimPath"` // optional; JWT groups for oidc:<providerKey>:group:<name> RBAC
 }
 
 // HeadersConfig defines headers emitted by the authorization server.
