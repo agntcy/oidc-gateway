@@ -8,7 +8,7 @@ replace github.com/agntcy/oidc-gateway/authzserver => ../../authzserver
 replace github.com/agntcy/oidc-gateway/identity => ../../identity
 
 require (
-	github.com/agntcy/oidc-gateway/authzserver v1.1.1
+	github.com/agntcy/oidc-gateway/authzserver v1.1.3
 	github.com/envoyproxy/go-control-plane/envoy v1.37.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -16,7 +16,7 @@ require (
 
 require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/agntcy/oidc-gateway/identity v1.1.1 // indirect
+	github.com/agntcy/oidc-gateway/identity v1.1.3 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/casbin/casbin/v2 v2.135.0 // indirect
 	github.com/casbin/govaluate v1.10.0 // indirect
