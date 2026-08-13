@@ -182,6 +182,9 @@ SPDX-License-Identifier: Apache-2.0
                       {{- end }}
                       forward: true
                       forward_payload_header: 'x-jwt-payload'
+                      # Records why a token was refused so the authz server can report it
+                      # rather than mistaking the token for a federated JWT-SVID.
+                      failed_status_in_metadata: 'failed_status'
                     {{- end }}
                     {{- end }}
                     {{- if $root.Values.envoy.oidc.github.enabled }}
@@ -205,6 +208,9 @@ SPDX-License-Identifier: Apache-2.0
                       {{- end }}
                       forward: true
                       forward_payload_header: 'x-jwt-payload'
+                      # Records why a token was refused so the authz server can report it
+                      # rather than mistaking the token for a federated JWT-SVID.
+                      failed_status_in_metadata: 'failed_status'
                     {{- end }}
                   rules:
                     # Public paths: no JWT required — must come before the catch-all
@@ -244,6 +250,10 @@ SPDX-License-Identifier: Apache-2.0
                   failure_mode_allow: false
                   include_peer_certificate: true
                   include_tls_session: true
+                  # Carries the jwt_authn verification status (failed_status_in_metadata)
+                  # to the authz server, which cannot see dynamic metadata otherwise.
+                  metadata_context_namespaces:
+                    - envoy.filters.http.jwt_authn
               {{- if $ratelimitEnabled }}
               # 4. External rate limit (same authz service, RateLimitService API)
               - name: envoy.filters.http.ratelimit

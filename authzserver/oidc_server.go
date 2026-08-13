@@ -155,7 +155,13 @@ func (s *OIDCAuthorizationServer) Check(ctx context.Context, req *authv3.CheckRe
 
 	// 4. JWT-SVID bearer token validated via SPIRE Workload API (federated bundles).
 	if s.jwtValidator != nil {
-		return s.authorizeFromJWTSVID(ctx, path, headers)
+		return s.authorizeFromJWTSVID(ctx, req, path, headers)
+	}
+
+	// 5. No SVID validator to fall back on: if jwt_authn refused a bearer token,
+	// report that instead of a generic missing-credentials error.
+	if failure, ok := jwtAuthnFailureFromRequest(req); ok {
+		return s.denyRefusedOIDCToken(path, failure), nil
 	}
 
 	s.logger.Warn("missing credentials: neither x509 SPIFFE identity nor verified JWT payload present")
@@ -215,7 +221,12 @@ func groupPrincipalStrings(principals []identity.IdentityPrincipal) []string {
 	return out
 }
 
-func (s *OIDCAuthorizationServer) authorizeFromJWTSVID(ctx context.Context, path string, headers map[string]string) (*authv3.CheckResponse, error) {
+func (s *OIDCAuthorizationServer) authorizeFromJWTSVID(
+	ctx context.Context,
+	req *authv3.CheckRequest,
+	path string,
+	headers map[string]string,
+) (*authv3.CheckResponse, error) {
 	token := extractBearerToken(headers)
 	if token == "" {
 		s.logger.Warn("missing credentials: JWT-SVID validation enabled but no bearer token present")
@@ -225,6 +236,12 @@ func (s *OIDCAuthorizationServer) authorizeFromJWTSVID(ctx context.Context, path
 
 	spiffeID, err := s.jwtValidator.ValidateToken(ctx, token)
 	if err != nil {
+		// A token jwt_authn already refused is not an SVID, and complaining about
+		// its SPIFFE subject hides the real reason. Report that reason instead.
+		if failure, ok := jwtAuthnFailureFromRequest(req); ok {
+			return s.denyRefusedOIDCToken(path, failure), nil
+		}
+
 		s.logger.Warn("JWT-SVID validation failed", "error", err)
 
 		return s.denyResponse(codes.Unauthenticated, "invalid JWT-SVID: "+err.Error()), nil
@@ -233,6 +250,19 @@ func (s *OIDCAuthorizationServer) authorizeFromJWTSVID(ctx context.Context, path
 	principal := principalFromSPIFFEID(spiffeID).PrincipalString()
 
 	return s.authorizePrincipal(string(principal), path, "jwt-svid")
+}
+
+// denyRefusedOIDCToken reports a bearer token that an OIDC provider matched and
+// then rejected, using the status Envoy's jwt_authn filter recorded for it.
+func (s *OIDCAuthorizationServer) denyRefusedOIDCToken(path string, failure jwtAuthnFailure) *authv3.CheckResponse {
+	s.logger.Warn("OIDC token refused",
+		"path", path,
+		"code", failure.Code,
+		"reason", failure.Message,
+		"via", "jwt-authn",
+	)
+
+	return s.denyResponse(codes.Unauthenticated, "invalid token: "+failure.Message)
 }
 
 func (s *OIDCAuthorizationServer) authorizePrincipal(principal, path, via string) (*authv3.CheckResponse, error) {
