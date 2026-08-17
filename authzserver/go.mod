@@ -9,7 +9,7 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.6.0
 	golang.org/x/net v0.56.0
 	golang.org/x/time v0.15.0
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260810153831-ec0a7760b754
 	google.golang.org/grpc v1.82.1
 	google.golang.org/protobuf v1.36.11
 )
