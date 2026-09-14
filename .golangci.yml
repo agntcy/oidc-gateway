@@ -8,7 +8,8 @@ linters:
     - depguard # Allow all package imports
     - embeddedstructfieldcheck # Allow embedded fields in any position
     - err113
-    - exhaustruct # Allow structures with uninitialized fields
+    - exhaustruct # Allow structures with uninitialized fields (deprecated, replaced by exhaustruct_v5)
+    - exhaustruct_v5 # Allow structures with uninitialized fields
     - funcorder # Allow flexible function ordering within structs
     - funlen # Allow long functions
     - godoclint # Allow flexible godoc comment styles
