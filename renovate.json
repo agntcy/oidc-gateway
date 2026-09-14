@@ -96,6 +96,26 @@
       ]
     },
     {
+      "groupName": "Go toolchain",
+      "groupSlug": "go-toolchain",
+      "matchDepNames": ["go"],
+      "addLabels": ["go"],
+      "description": [
+        "Keep the Go version in sync across Taskfile, workflows and go.mod in a single PR."
+      ]
+    },
+    {
+      "matchDatasources": ["npm"],
+      "matchDepNames": ["renovate"],
+      "enabled": true,
+      "groupName": null,
+      "addLabels": ["build"],
+      "description": [
+        "Renovate only supports its latest major, so allow its self-updates even though majors are disabled.",
+        "Keep self-updates out of the Taskfile group so an unrelated tool bump cannot block them."
+      ]
+    },
+    {
       "matchJsonata": [
         "$exists(vulnerabilityFixVersion) or isVulnerabilityAlert = true"
       ],

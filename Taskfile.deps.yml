@@ -105,7 +105,7 @@ tasks:
     internal: true
     cmd: npm install -g renovate@{{.RENOVATE_VERSION}}
     status:
-      - npm list -g renovate
+      - npm list -g --depth 0 renovate | grep -qF 'renovate@{{.RENOVATE_VERSION}}'
 
   deps:pre-commit:
     desc: Install pre-commit
