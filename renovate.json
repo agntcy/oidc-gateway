@@ -33,6 +33,18 @@
       "description": [
         "Custom dependency manager for updating image tag@digest defined in Taskfile."
       ]
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/(^|/)kind-cluster\\.yaml$/"
+      ],
+      "matchStrings": [
+        "(?m)^\\s*#\\s*renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)\\s*\\r?\\n\\s*-?\\s*image:\\s+\"?[^\"\\s]+:(?<currentValue>[^\"\\s]+)\"?\\s*$"
+      ],
+      "description": [
+        "Custom dependency manager for the Kubernetes version of the Kind e2e cluster."
+      ]
     }
   ],
   "dependencyDashboardAutoclose": true,
@@ -49,6 +61,13 @@
     "helmv3"
   ],
   "labels": ["dependencies"],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__fixtures__/**"
+  ],
   "ignoreDeps": [
     "github.com/agntcy/oidc-gateway/authzserver",
     "github.com/agntcy/oidc-gateway/cmd/oidc-gateway"
