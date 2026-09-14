@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 RUN xx-verify /bin/oidc-gateway
 
 # Production image - minimal distroless
-FROM gcr.io/distroless/static:nonroot@sha256:e3f945647ffb95b5839c07038d64f9811adf17308b9121d8a2b87b6a22a80a39 AS production
+FROM gcr.io/distroless/static:nonroot@sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3 AS production
 
 WORKDIR /
 
