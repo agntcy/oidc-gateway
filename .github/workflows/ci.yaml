@@ -110,6 +110,16 @@ jobs:
           restore-keys: |
             lint-cache-${{ runner.os }}-
 
+      # Tool binaries are pinned and version-suffixed in Taskfile.vars.yml, so a
+      # hit here skips the download entirely rather than re-fetching every run.
+      - name: Setup tool cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .bin
+          key: tools-${{ runner.os }}-${{ hashFiles('Taskfile.vars.yml') }}
+          restore-keys: |
+            tools-${{ runner.os }}-
+
       - name: Run linters
         run: task lint
 
@@ -135,6 +145,14 @@ jobs:
           key: license-cache-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             license-cache-${{ runner.os }}-
+
+      - name: Setup tool cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
+        with:
+          path: .bin
+          key: tools-${{ runner.os }}-${{ hashFiles('Taskfile.vars.yml') }}
+          restore-keys: |
+            tools-${{ runner.os }}-
 
       - name: License cache
         env:

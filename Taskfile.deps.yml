@@ -57,7 +57,17 @@ tasks:
       - which tar
     cmds:
       - cmd: echo "Downloading Helm v{{.HELM_VERSION}}..."
-      - cmd: curl -sSfL 'https://get.helm.sh/helm-v{{.HELM_VERSION}}-{{OS}}-{{ARCH}}.tar.gz' --output - | tar xzvOf - '{{OS}}-{{ARCH}}/helm' > {{.HELM_BIN}}
+      - cmd: |
+          attempt=1
+          until curl -sSfL 'https://get.helm.sh/helm-v{{.HELM_VERSION}}-{{OS}}-{{ARCH}}.tar.gz' --output - | tar xzvOf - '{{OS}}-{{ARCH}}/helm' > {{.HELM_BIN}}; do
+            if [ "${attempt}" -ge 5 ]; then
+              echo "Helm v{{.HELM_VERSION}} download failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+            echo "Helm v{{.HELM_VERSION}} download failed (attempt ${attempt}/5), retrying..." >&2
+            sleep $((attempt * 5))
+            attempt=$((attempt + 1))
+          done
       - cmd: chmod +x {{.HELM_BIN}}
     status:
       - test -x {{.HELM_BIN}}
@@ -68,7 +78,19 @@ tasks:
     deps:
       - deps:bin-dir
     cmds:
-      - curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b {{.BIN_DIR}} v{{.GOLANGCI_LINT_VERSION}}
+      # The upstream install script has no retry of its own and the GitHub
+      # release CDN returns 504 often enough to fail CI on a first attempt.
+      - |
+        attempt=1
+        until curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b {{.BIN_DIR}} v{{.GOLANGCI_LINT_VERSION}}; do
+          if [ "${attempt}" -ge 5 ]; then
+            echo "golangci-lint v{{.GOLANGCI_LINT_VERSION}} download failed after ${attempt} attempts" >&2
+            exit 1
+          fi
+          echo "golangci-lint v{{.GOLANGCI_LINT_VERSION}} download failed (attempt ${attempt}/5), retrying..." >&2
+          sleep $((attempt * 5))
+          attempt=$((attempt + 1))
+        done
       - mv {{.BIN_DIR}}/golangci-lint {{.GOLANGCI_LINT_BIN}}
       - chmod +x {{.GOLANGCI_LINT_BIN}}
     status:
@@ -80,7 +102,17 @@ tasks:
     deps:
       - deps:bin-dir
     cmds:
-      - curl -sfL https://raw.githubusercontent.com/goph/licensei/master/install.sh | sh -s -- -b {{.BIN_DIR}} v{{.LICENSEI_VERSION}}
+      - |
+        attempt=1
+        until curl -sfL https://raw.githubusercontent.com/goph/licensei/master/install.sh | sh -s -- -b {{.BIN_DIR}} v{{.LICENSEI_VERSION}}; do
+          if [ "${attempt}" -ge 5 ]; then
+            echo "licensei v{{.LICENSEI_VERSION}} download failed after ${attempt} attempts" >&2
+            exit 1
+          fi
+          echo "licensei v{{.LICENSEI_VERSION}} download failed (attempt ${attempt}/5), retrying..." >&2
+          sleep $((attempt * 5))
+          attempt=$((attempt + 1))
+        done
       - mv {{.BIN_DIR}}/licensei {{.LICENSEI_BIN}}
       - chmod +x {{.LICENSEI_BIN}}
     status:
