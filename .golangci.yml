@@ -39,6 +39,8 @@ linters:
       template: |-
         Copyright AGNTCY Contributors (https://github.com/agntcy)
         SPDX-License-Identifier: Apache-2.0
+    goconst:
+      ignore-tests: true
     gomoddirectives:
       replace-allow-list: []
       replace-local: true

@@ -15,7 +15,6 @@ import (
 	typev3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // Header names for JWT and principal propagation.
@@ -282,8 +281,8 @@ func (s *OIDCAuthorizationServer) allowResponse(principal string) *authv3.CheckR
 
 	if principal != "" {
 		headers = append(headers, &corev3.HeaderValueOption{
-			Header: &corev3.HeaderValue{Key: s.config.AuthPrincipalHeader(), Value: principal},
-			Append: wrapperspb.Bool(false), // overwrite any client-supplied value
+			Header:       &corev3.HeaderValue{Key: s.config.AuthPrincipalHeader(), Value: principal},
+			AppendAction: corev3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD,
 		})
 	}
 
