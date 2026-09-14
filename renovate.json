@@ -95,6 +95,16 @@
       "description": ["Group Go dependency patch updates in single PR."]
     },
     {
+      "groupName": "golang.org/x",
+      "groupSlug": "golang-x",
+      "matchPackageNames": ["golang.org/x/**"],
+      "addLabels": ["go"],
+      "description": [
+        "The golang.org/x modules move as a set: bumping one makes go get pull in the rest,",
+        "so one PR per module rewrites the same go.mod and go.sum lines and they permanently conflict."
+      ]
+    },
+    {
       "groupName": "Github Actions",
       "groupSlug": "github-actions",
       "matchDatasources": ["github-tags"],
@@ -157,8 +167,11 @@
   "timezone": "Etc/UTC",
   "vulnerabilityAlerts": {
     "enabled": true,
+    "groupName": "security",
+    "groupSlug": "security",
     "labels": ["security"],
     "minimumReleaseAge": null,
-    "schedule": ["at any time"]
+    "schedule": ["at any time"],
+    "vulnerabilityFixStrategy": "highest"
   }
 }
