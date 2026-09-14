@@ -1,6 +1,6 @@
 module github.com/agntcy/oidc-gateway/tests
 
-go 1.26.3
+go 1.27.1
 
 require (
 	github.com/agntcy/dir/api v1.4.0

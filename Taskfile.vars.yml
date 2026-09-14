@@ -27,7 +27,7 @@ vars:
   # renovate: datasource=npm depName=renovate versioning=semver
   RENOVATE_VERSION: "44.85.0"
   # renovate: datasource=golang-version depName=go versioning=semver
-  GO_VERSION: "1.26.3"
+  GO_VERSION: "1.27.1"
   # renovate: datasource=github-tags depName=golangci/golangci-lint versioning=semver
   GOLANGCI_LINT_VERSION: "2.13.2"
   GOLANGCI_LINT_BIN: "{{ .BIN_DIR }}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
