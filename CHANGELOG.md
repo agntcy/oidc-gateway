@@ -26,6 +26,7 @@ Security maintenance release. No functional changes; upgrading is recommended fo
 ### Fixed
 
 - **CI**: Unpin the Go toolchain for the Renovate job so Go version bumps can update `go.mod` instead of deadlocking (#97).
+- **CI**: Cache tool binaries and retry flaky tool downloads, so an upstream 504 no longer fails the lint, license and e2e jobs (#107).
 
 ## [v1.1.4] - 2026-08-17
 
