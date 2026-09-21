@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/agntcy/dir/api v1.4.0
-	github.com/onsi/ginkgo/v2 v2.28.3
+	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.40.0
 	google.golang.org/grpc v1.83.2
 )
