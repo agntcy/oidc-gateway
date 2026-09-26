@@ -25,7 +25,7 @@ vars:
   ## Dependency config
   BIN_DIR: "{{ .ROOT_DIR }}/.bin"
   # renovate: datasource=npm depName=renovate versioning=semver
-  RENOVATE_VERSION: "44.87.1"
+  RENOVATE_VERSION: "44.111.2"
   # renovate: datasource=golang-version depName=go versioning=semver
   GO_VERSION: "1.27.1"
   # renovate: datasource=github-tags depName=golangci/golangci-lint versioning=semver
