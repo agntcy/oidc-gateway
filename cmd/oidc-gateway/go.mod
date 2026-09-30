@@ -10,7 +10,7 @@ replace github.com/agntcy/oidc-gateway/identity => ../../identity
 require (
 	github.com/agntcy/oidc-gateway/authzserver v1.1.5
 	github.com/envoyproxy/go-control-plane/envoy v1.39.0
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
