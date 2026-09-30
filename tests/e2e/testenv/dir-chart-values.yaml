@@ -3,3 +3,14 @@ apiserver:
     type: "NodePort"
     nodePort: "30088"
     metricsNodePort: "30090"
+
+  config:
+    # Keep the test cluster hermetic. The chart defaults dial the public AGNTCY
+    # bootstrap peer and fetch the OASF schema over the internet, which makes the
+    # apiserver's gRPC health depend on services outside the kind cluster.
+    routing:
+      bootstrap_peers: []
+      gossipsub:
+        enabled: false
+    oasf_api_validation:
+      disable: true
