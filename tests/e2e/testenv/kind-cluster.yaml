@@ -5,7 +5,7 @@ nodes:
   # defaults to, so a kind bump cannot silently move the cluster out from under
   # the pinned SPIRE, Dex and Dir charts.
   # renovate: datasource=docker depName=kindest/node
-  - image: "kindest/node:v1.35.0"
+  - image: "kindest/node:v1.37.0"
     role: control-plane
     extraPortMappings:
     # DIR API server
