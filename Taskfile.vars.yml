@@ -29,19 +29,19 @@ vars:
   # renovate: datasource=golang-version depName=go versioning=semver
   GO_VERSION: "1.27.1"
   # renovate: datasource=github-tags depName=golangci/golangci-lint versioning=semver
-  GOLANGCI_LINT_VERSION: "2.14.0"
+  GOLANGCI_LINT_VERSION: "2.15.0"
   GOLANGCI_LINT_BIN: "{{ .BIN_DIR }}/golangci-lint-{{.GOLANGCI_LINT_VERSION}}"
   # renovate: datasource=github-tags depName=goph/licensei versioning=semver
   LICENSEI_VERSION: "0.9.0"
   LICENSEI_BIN: "{{ .BIN_DIR }}/licensei-{{.LICENSEI_VERSION}}"
   # renovate: datasource=github-tags depName=helm/helm versioning=semver
-  HELM_VERSION: "4.3.0"
+  HELM_VERSION: "4.3.1"
   HELM_BIN: "{{ .BIN_DIR }}/helm-{{.HELM_VERSION}}"
   # renovate: datasource=github-tags depName=open-telemetry/opentelemetry-go-build-tools versioning=semver
   MULTIMOD_VERSION: "0.30.0"
   MULTIMOD_BIN: "{{ .BIN_DIR }}/multimod-{{.MULTIMOD_VERSION}}"
   # renovate: datasource=github-tags depName=pre-commit/pre-commit versioning=semver
-  PRE_COMMIT_VERSION: "4.6.2"
+  PRE_COMMIT_VERSION: "4.7.0"
   PRE_COMMIT_PYZ: "{{ .BIN_DIR }}/pre-commit-{{.PRE_COMMIT_VERSION}}.pyz"
   # renovate: datasource=go depName=sigs.k8s.io/kind versioning=semver
   KIND_VERSION: "0.33.0"
