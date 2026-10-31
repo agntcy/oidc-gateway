@@ -7,7 +7,7 @@ require (
 	github.com/casbin/casbin/v2 v2.135.0
 	github.com/envoyproxy/go-control-plane/envoy v1.39.0
 	github.com/spiffe/go-spiffe/v2 v2.8.2
-	golang.org/x/net v0.60.0
+	golang.org/x/net v0.62.0
 	golang.org/x/time v0.16.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261005182115-fad411399dd8
 	google.golang.org/grpc v1.84.0
@@ -22,9 +22,9 @@ require (
 	github.com/casbin/govaluate v1.10.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
-	github.com/go-jose/go-jose/v4 v4.1.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 )
