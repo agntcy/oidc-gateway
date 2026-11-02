@@ -1,6 +1,6 @@
 module github.com/agntcy/oidc-gateway/authzserver
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/agntcy/oidc-gateway/identity v1.1.5
