@@ -23,7 +23,8 @@ tasks:
     deps:
       - task: ::build
     vars:
-      DIR_VERSION: "v1.4.0"
+      # renovate: datasource=docker depName=ghcr.io/agntcy/dir-apiserver
+      DIR_VERSION: "v1.9.0"
       KIND_CONFIG_PATH: "{{.ROOT_DIR}}/tests/e2e/testenv/kind-cluster.yaml"
       # Only the locally built gateway image is side-loaded. The dir images are
       # public and the kind node pulls them like every other chart image: with

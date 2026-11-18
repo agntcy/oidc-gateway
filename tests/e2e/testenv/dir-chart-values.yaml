@@ -12,5 +12,5 @@ apiserver:
       bootstrap_peers: []
       gossipsub:
         enabled: false
-    oasf_api_validation:
-      disable: true
+    policy:
+      operations: []
