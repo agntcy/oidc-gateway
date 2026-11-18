@@ -5,7 +5,7 @@ go 1.27.4
 require (
 	github.com/agntcy/oidc-gateway/identity v1.1.6
 	github.com/casbin/casbin/v2 v2.135.0
-	github.com/envoyproxy/go-control-plane/envoy v1.39.0
+	github.com/envoyproxy/go-control-plane/envoy v1.40.0
 	github.com/spiffe/go-spiffe/v2 v2.9.0
 	golang.org/x/net v0.62.0
 	golang.org/x/time v0.16.0
