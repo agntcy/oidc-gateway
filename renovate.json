@@ -47,9 +47,11 @@
       ]
     }
   ],
-  "dependencyDashboardAutoclose": true,
-  "dependencyDashboardLabels": ["dependencies"],
-  "dependencyDashboardOSVVulnerabilitySummary": "all",
+  "dependencyDashboard": {
+    "autoclose": true,
+    "labels": ["dependencies"],
+    "osvVulnerabilitySummary": "all"
+  },
   "enabled": true,
   "minimumReleaseAge": "3 days",
   "schedule": ["before 6am on Monday"],
