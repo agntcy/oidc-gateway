@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.6] - 2026-11-18
+
+Security maintenance release. No functional changes; upgrading is recommended for the toolchain and dependency fixes below.
+
+### Security
+
+- **Runtime**: Build with Go 1.27.4, up from 1.27.1. This fixes the 15 standard library advisories reported against the v1.1.5 image, including CVE-2026-111943 (fixed in 1.27.3) and CVE-2026-97054 (fixed in 1.27.4) (#135).
+- **Image**: Refresh the `gcr.io/distroless/static:nonroot` base image digest, picking up the `ca-certificates` fix for DSA-6572-1 (#135).
+- **Deps**: Update `golang.org/x/net` to v0.62.0, resolving the HTTP/2 advisories CVE-2026-78659, CVE-2026-78660, CVE-2026-78663 and CVE-2026-78669, and the `html` advisories CVE-2026-78661 and CVE-2026-97045 (#123, #132).
+- **Deps**: Update `github.com/go-jose/go-jose/v4` to v4.1.7, resolving the JWK parsing DoS CVE-2026-116587 (#132).
+- **Deps**: Pick up `golang.org/x/text` v0.43.0 and `golang.org/x/sys` v0.49.0 transitively.
+
+### Changed
+
+- **Deps**: Update `google.golang.org/grpc` to v1.84.0 (#118), `github.com/spiffe/go-spiffe/v2` to v2.9.0 (#115, #127), and the `google.golang.org/genproto/googleapis/rpc` digest (#114, #121). The E2E test module moves to `github.com/agntcy/dir/api` v1.7.1 (#112).
+- **Renovate**: Group the `golang` builder image with the Go version, so a Go bump arrives as one PR that builds (#135).
+
+### Fixed
+
+- **CI**: Let the kind node pull the public dir images instead of side-loading them. Side-loading failed under Docker's containerd image store and had broken E2E on every run since 2026-11-02 (#135).
+- **CI**: Keep the dir test environment off the public routing network and remote schema, which made `dir-apiserver` drop out of its Service endpoints and E2E fail intermittently (#119).
+
 ## [v1.1.5] - 2026-09-14
 
 Security maintenance release. No functional changes; upgrading is recommended for the dependency fixes below.
