@@ -25,9 +25,12 @@ tasks:
     vars:
       DIR_VERSION: "v1.4.0"
       KIND_CONFIG_PATH: "{{.ROOT_DIR}}/tests/e2e/testenv/kind-cluster.yaml"
+      # Only the locally built gateway image is side-loaded. The dir images are
+      # public and the kind node pulls them like every other chart image: with
+      # Docker's containerd image store, a pulled multi-platform image keeps its
+      # index but only the host platform's blobs, and `kind load docker-image`
+      # (ctr import --all-platforms) fails with "content digest ... not found".
       KIND_EXTRA_IMAGES: |
-        {{ .IMAGE_REPO }}/dir-reconciler:{{.DIR_VERSION}}
-        {{ .IMAGE_REPO }}/dir-apiserver:{{.DIR_VERSION}}
         {{ .IMAGE_REPO }}/oidc-gateway:{{.IMAGE_TAG}}
       CHART_DEPLOYMENTS: |
         [
