@@ -15,6 +15,11 @@ on:
         required: true
         type: string
         description: "Release tag for all components."
+      app_version:
+        required: false
+        type: string
+        description: "Chart appVersion, the image tag the chart deploys by default. Defaults to release_tag."
+        default: ""
   workflow_call:
     inputs:
       image_repo:
@@ -30,6 +35,11 @@ on:
         type: string
         description: "Chart path component (e.g., 'oidc-gateway' or 'oidc-gateway-dev'). Defaults to 'oidc-gateway'."
         default: "oidc-gateway"
+      app_version:
+        required: false
+        type: string
+        description: "Chart appVersion, the image tag the chart deploys by default. Defaults to release_tag."
+        default: ""
 
 jobs:
   chart:
@@ -64,9 +74,15 @@ jobs:
       - name: Helm package
         id: build
         shell: bash
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          APP_VERSION: ${{ inputs.app_version || inputs.release_tag }}
         run: |
-          helm package install/charts/oidc-gateway --dependency-update --version ${{ inputs.release_tag }}
-          echo "package=oidc-gateway-${{ inputs.release_tag }}.tgz" >> "$GITHUB_OUTPUT"
+          # The authz-server image tag defaults to .Chart.AppVersion, so set it to the
+          # image this chart ships with instead of the placeholder in Chart.yaml.
+          helm package install/charts/oidc-gateway --dependency-update \
+            --version "${RELEASE_TAG}" --app-version "${APP_VERSION}"
+          echo "package=oidc-gateway-${RELEASE_TAG}.tgz" >> "$GITHUB_OUTPUT"
 
       - name: Helm push to GHCR OCI registry
         shell: bash

@@ -116,6 +116,7 @@ jobs:
     with:
       image_repo: ${{ needs.prepare.outputs.image_repo }}
       release_tag: ${{ needs.prepare.outputs.chart_version }}
+      app_version: ${{ needs.prepare.outputs.image_tag }}
       chart_path: ${{ needs.prepare.outputs.chart_path }}
 
   summary:
