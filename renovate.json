@@ -127,10 +127,11 @@
     {
       "groupName": "Go toolchain",
       "groupSlug": "go-toolchain",
-      "matchDepNames": ["go"],
+      "matchDepNames": ["go", "golang"],
       "addLabels": ["go"],
       "description": [
-        "Keep the Go version in sync across Taskfile, workflows and go.mod in a single PR."
+        "Keep the Go version in sync across Taskfile, workflows, go.mod and the golang builder image in a single PR.",
+        "Split, the go directive fails the image build (go.mod requires go >= ...) until the golang image catches up."
       ]
     },
     {
