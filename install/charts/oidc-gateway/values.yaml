@@ -11,7 +11,10 @@ envoy:
 
   image:
     repository: envoyproxy/envoy
-    tag: distroless-v1.37-latest
+    # Pinned to a release rather than a floating distroless-vX.Y-latest tag, so the
+    # deployed Envoy is the one that was scanned; Renovate moves it to new releases.
+    # renovate: datasource=docker depName=envoyproxy/envoy
+    tag: distroless-v1.40.2
     pullPolicy: IfNotPresent
 
   service:
