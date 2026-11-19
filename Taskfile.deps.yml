@@ -201,3 +201,16 @@ tasks:
       - cmd: mv {{.BIN_DIR}}/kind {{.KIND_BIN}}
     status:
       - test -x {{.KIND_BIN}}
+
+  deps:vuln:images:list:
+    desc: Output vulnerability-scan image refs (one per line) for the CI matrix
+    vars:
+      CHART_VALUES: "{{.ROOT_DIR}}/install/charts/oidc-gateway/values.yaml"
+    preconditions:
+      - sh: command -v yq
+        msg: yq is required to read the chart's default Envoy image
+    cmds:
+      - for: { var: VULN_SCAN_IMAGES }
+        cmd: echo "{{.ITEM}}"
+      # The Envoy image the chart deploys by default, read from the chart so the scan follows it.
+      - yq '.envoy.image.repository + ":" + .envoy.image.tag' "{{.CHART_VALUES}}"

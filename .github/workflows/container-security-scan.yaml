@@ -15,24 +15,48 @@ permissions:
   issues: write
 
 jobs:
+  image-list:
+    name: Resolve image list
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: Install Task
+        uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e # v2.2.0
+
+      - name: Get image list from task
+        id: matrix
+        env:
+          IMAGE_TAG: latest
+          IMAGE_REPO: ghcr.io/${{ github.repository_owner }}
+        run: |
+          matrix=$(task --silent deps:vuln:images:list | jq -R -s -c 'split("\n") | map(select(length > 0)) | {image: .}')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   trivy-scan:
     name: Trivy Scan
     runs-on: ubuntu-latest
+    needs: [image-list]
     strategy:
       fail-fast: false
-      matrix:
-        image:
-          - ghcr.io/agntcy/oidc-gateway:latest
+      matrix: ${{ fromJson(needs.image-list.outputs.matrix) }}
     steps:
       - name: Set image name
         id: image-name
         run: |
           IMAGE_NAME=$(echo "${{ matrix.image }}" | sed -E 's|.*/||; s|[:@].*||')
-          echo "name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Scan image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          # trivy-action v0.36.0 defaults to Trivy v0.70.0; pin the current release instead.
+          version: v0.76.2
           image-ref: ${{ matrix.image }}
           github-pat: ${{ secrets.GITHUB_TOKEN }}
           format: sarif
