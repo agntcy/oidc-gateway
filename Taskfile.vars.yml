@@ -38,7 +38,7 @@ vars:
   HELM_VERSION: "4.3.2"
   HELM_BIN: "{{ .BIN_DIR }}/helm-{{.HELM_VERSION}}"
   # renovate: datasource=github-tags depName=open-telemetry/opentelemetry-go-build-tools versioning=semver
-  MULTIMOD_VERSION: "0.30.0"
+  MULTIMOD_VERSION: "0.31.0"
   MULTIMOD_BIN: "{{ .BIN_DIR }}/multimod-{{.MULTIMOD_VERSION}}"
   # renovate: datasource=github-tags depName=pre-commit/pre-commit versioning=semver
   PRE_COMMIT_VERSION: "4.7.0"
