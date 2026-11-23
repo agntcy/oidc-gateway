@@ -3,7 +3,7 @@ module github.com/agntcy/oidc-gateway/tests
 go 1.27.4
 
 require (
-	github.com/agntcy/dir/api v1.9.0
+	github.com/agntcy/dir/api v1.9.1
 	github.com/onsi/ginkgo/v2 v2.33.0
 	github.com/onsi/gomega v1.44.0
 	google.golang.org/grpc v1.84.0

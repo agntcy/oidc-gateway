@@ -6,8 +6,8 @@ buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-202608252041
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2/go.mod h1:TCt1lluMFnctISJXvkIQ4x3ABrPuUKCWKyjKdkJNBpw=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
-github.com/agntcy/dir/api v1.9.0 h1:vrbcs0XuLZOYplk74rHH6k8ZMdYwRaEXJQsqkcTWofM=
-github.com/agntcy/dir/api v1.9.0/go.mod h1:4W6pQIAKCJskInp3kNjMvtN59+WU17/8tBNQewg8c20=
+github.com/agntcy/dir/api v1.9.1 h1:0ccaBslzBTltfFHVwPSyFdGFoigapA6pjWBiixliliY=
+github.com/agntcy/dir/api v1.9.1/go.mod h1:akaqGOLImfy96sb6jfb6WIanONNpIKeGFyhDxRt7zg8=
 github.com/agntcy/oasf-sdk/pkg v1.1.0 h1:Z2CfQ+XIjoHvlw2P0jcTRs59nbgVpjdnSVGGxmJTIEo=
 github.com/agntcy/oasf-sdk/pkg v1.1.0/go.mod h1:MAWceG+fNkVjgWbfrQOp64h6f5dbJbd1InP93fiMEiQ=
 github.com/gkampitakis/ciinfo v0.3.2 h1:JcuOPk8ZU7nZQjdUhctuhQofk7BGHuIy0c9Ez8BNhXs=
